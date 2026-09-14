@@ -5040,11 +5040,22 @@ var PyRunner = {
         case 'variables': {
           var nombres = Array.isArray(valor) ? valor : [valor];
           cumple = nombres.every(function (nombre) {
-            var asignacion = new RegExp('(^|\\n)\\s*' + String(nombre) + '\\s*=[^=]');
+            /* Vale tanto "precio = 2" como un desempaquetado de tupla:
+               "articulo, precio = producto". Antes solo se aceptaba lo primero,
+               y por eso la solución oficial de un ejercicio de desempaquetado
+               no pasaba su propia comprobación. */
+            var escapado = String(nombre).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            var asignacion = new RegExp('(^|\\n)\\s*[\\w\\s,()\\[\\]]*\\b' + escapado +
+              '\\b[\\w\\s,()\\[\\]]*=[^=]');
             return asignacion.test(codigoTexto);
           });
           break;
         }
+        case 'salida_longitud_min':
+          /* Para proyectos creativos (un relato, un juego): no se puede exigir
+             un texto exacto, pero sí que el programa escriba algo de verdad. */
+          cumple = salidaNormalizada.length >= Number(valor);
+          break;
         case 'longitud_max':
           cumple = Utils.contarLineas(codigoTexto) <= Number(valor);
           break;
@@ -6434,6 +6445,7 @@ const CURSO = {
           explicacionCorrecta: "Tu tarjeta usa print y comentarios, muestra varias líneas y se ejecuta sin errores. Has cerrado el primer bloque del curso con un programa que se lee de arriba abajo.",
           explicacionIncorrecta: "Revisa que uses solo print y comentarios, que haya al menos cuatro líneas de salida y que no falte ningún paréntesis ni comilla. Un solo # mal colocado cambia el resultado.",
           validaciones: [
+        { tipo: "salida_igual", valor: "--- MI TARJETA ---\nNombre: Ana\nCiudad: Bogotá\nLenguaje favorito: Python\nFin de la tarjeta\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "#", descripcion: "Debes incluir un comentario" },
             { tipo: "contiene_codigo", valor: "print(", descripcion: "Debes usar instrucciones print" },
@@ -7251,6 +7263,7 @@ const CURSO = {
           explicacionCorrecta: "Tu ficha mezcla los cuatro tipos de datos, mide textos con len(), redondea decimales con round() y comprueba el resultado de una conversión con type(). Es un resumen perfecto de la semana.",
           explicacionIncorrecta: "Revisa que estén las cuatro variables, que uses len() sobre el nombre, round() sobre la vida e int() sobre el texto. Y no olvides type() para comprobar el tipo convertido.",
           validaciones: [
+        { tipo: "salida_igual", valor: "Nombre: Rayo - letras: 4\nNivel: 7\nVida: 87.5\nFuerza: 120 - tipo: <class 'int'>\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "usa_funcion", valor: "len", descripcion: "Debes usar len()" },
             { tipo: "usa_funcion", valor: "round", descripcion: "Debes usar round()" },
@@ -8086,6 +8099,7 @@ const CURSO = {
           explicacionCorrecta: "Combinaste entrada de datos, conversión de tipos, f-strings, una suma y len(). Es un programa completo que reacciona a lo que escribe el usuario.",
           explicacionIncorrecta: "Revisa que conviertes la edad con int() antes de sumarle 1, que cada mensaje lleva la f delante y que las llaves rodean las variables y las operaciones.",
           validaciones: [
+        { tipo: "salida_igual", valor: "¿Cómo te llamas? Ana\n¿Cuántos años tienes? 30\n¿En qué ciudad vives? Madrid\nHola, Ana.\nTienes 30 años y vives en Madrid.\nEl año que viene tendrás 31 años.\nTu nombre tiene 3 letras.\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "input(", descripcion: "Debes pedir datos con input()" },
             { tipo: "usa_funcion", valor: "int", descripcion: "Debes convertir la edad a entero" },
@@ -8894,6 +8908,7 @@ const CURSO = {
           explicacionCorrecta: "Has escrito un programa completo: pide seis datos, los convierte, calcula con ellos y construye una historia con f-strings. Este es exactamente el objetivo del mes.",
           explicacionIncorrecta: "Revisa la lista de requisitos uno a uno: seis variables, input() en todos los datos, int() en los números, f-strings en la historia y dos operaciones distintas. Corrige y vuelve a probar.",
           validaciones: [
+        { tipo: "salida_longitud_min", valor: 120, descripcion: "El relato tiene que ser un texto de verdad, no una línea suelta" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "input(", descripcion: "Debes pedir los datos con input()" },
             { tipo: "usa_funcion", valor: "int", descripcion: "Debes convertir los números con int()" },
@@ -9783,6 +9798,7 @@ const CURSO = {
           explicacionIncorrecta: "Revisa los bordes: el 10 y el 25 deben caer en Templado, así que usa < 10 y <= 25, dejando el else para el calor.",
           entradasSimuladas: ["18"],
         validaciones: [
+        { tipo: "salida_igual", valor: "¿Qué temperatura hace? 18\nTemplado\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "usa_funcion", valor: "int", descripcion: "Debes convertir la temperatura a entero" },
             { tipo: "contiene_codigo", valor: "elif", descripcion: "Debes usar una cadena con elif" },
@@ -11091,6 +11107,7 @@ const CURSO = {
           salidaEsperada: "La tabla de sumar del número elegido",
           entradasSimuladas: ["7"],
           validaciones: [
+        { tipo: "salida_igual", valor: "Escribe un número: 7\n7 + 1 = 8\n7 + 2 = 9\n7 + 3 = 10\n7 + 4 = 11\n7 + 5 = 12\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "for ", descripcion: "Debes usar un bucle for con range()" },
             { tipo: "usa_funcion", valor: "range", descripcion: "Debes usar range() para las cinco líneas" },
@@ -11847,6 +11864,7 @@ const CURSO = {
           explicacionIncorrecta: "Revisa que la cercanía se calcule en valor absoluto, porque la diferencia no puede ser negativa, y que el aviso no aparezca cuando ya se acertó.",
           entradasSimuladas: ["10","16","13"],
         validaciones: [
+        { tipo: "salida_contiene", valor: "Demasiado bajo", descripcion: "El juego tiene que avisar de que el número es demasiado bajo" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "randint", descripcion: "Debes sortear el número con random.randint" },
             { tipo: "contiene_codigo", valor: "¡Estás cerca!", descripcion: "Debe aparecer el aviso de cercanía" },
@@ -11970,8 +11988,9 @@ const CURSO = {
           pista: "El orden dentro del bucle es: leer como texto, validar con isdigit, si no es válido avisar y continuar, si lo es convertir y contar, y después comparar.",
           codigoInicial: "import random\n\nnumero_secreto = random.randint(1, 50)\nintentos = 0\n\n# Completa el bucle del juego\n",
           salidaEsperada: "Demasiado bajo\n¡Correcto!\nLo lograste en 2 intentos.",
-          entradasSimuladas: ["10", "40"],
+          entradasSimuladas: ["10", "abc", "40", "25"],
           validaciones: [
+            { tipo: "salida_contiene", valor: "Demasiado bajo", descripcion: "El juego tiene que dar la pista de que el número es demasiado bajo" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "import random", descripcion: "Debes sortear el número con random" },
             { tipo: "contiene_codigo", valor: "continue", descripcion: "Debes ignorar las entradas inválidas con continue" },
@@ -12012,6 +12031,7 @@ const CURSO = {
           explicacionIncorrecta: "Repasa los tres pilares: validar con isdigit antes de convertir, contar solo los intentos válidos y salir con break al acertar. Así el programa nunca se queda en bucle infinito.",
           entradasSimuladas: ["abc","25","75","50"],
         validaciones: [
+        { tipo: "salida_contiene", valor: "Demasiado alto", descripcion: "El juego tiene que avisar de que el número es demasiado alto" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "randint", descripcion: "Debes generar el número secreto con random.randint" },
             { tipo: "usa_funcion", valor: "isdigit", descripcion: "Debes validar la entrada con isdigit" },
@@ -12288,6 +12308,7 @@ const CURSO = {
           salidaEsperada: "['perro', 'gato', 'conejo']",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "['perro', 'gato', 'conejo']\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "variables", valor: ["mascotas"], descripcion: "Debes crear una variable llamada mascotas" },
             { tipo: "contiene_codigo", valor: "[", descripcion: "Debes usar corchetes para crear la lista" },
@@ -12446,6 +12467,7 @@ const CURSO = {
           salidaEsperada: "Primero: lunes\nÚltimo: viernes\nCentro: ['martes', 'miércoles', 'jueves']",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "Primero: lunes\nÚltimo: viernes\nCentro: ['martes', 'miércoles', 'jueves']\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "dias[0]", descripcion: "Accede al primer día por su índice" },
             { tipo: "contiene_codigo", valor: "dias[-1]", descripcion: "Accede al último día con un índice negativo" },
@@ -12601,6 +12623,7 @@ const CURSO = {
           salidaEsperada: "Carrito: ['café', 'pan', 'leche']\nFuera: huevos",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "Carrito: ['café', 'pan', 'leche']\nFuera: huevos\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "append(", descripcion: "Debes añadir 'huevos' al final con append" },
             { tipo: "contiene_codigo", valor: "insert(", descripcion: "Debes insertar 'café' en la primera posición" },
@@ -12738,6 +12761,7 @@ const CURSO = {
           salidaEsperada: "Cantidad: 4\n¿Está 78? True\nOrdenados: [78, 45, 33, 12]",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "Cantidad: 4\n¿Está 78? True\nOrdenados: [78, 45, 33, 12]\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "usa_funcion", valor: "len", descripcion: "Debes usar len() para contar los elementos" },
             { tipo: "contiene_codigo", valor: " in precios", descripcion: "Debes comprobar la pertenencia con el operador in" },
@@ -12874,6 +12898,7 @@ const CURSO = {
           salidaEsperada: "21\n24\n19\n25\nDías de calor: 2\nPromedio: 22.25",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "21\n24\n19\n25\nDías de calor: 2\nPromedio: 22.25\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "for ", descripcion: "Debes recorrer la lista con un bucle for" },
             { tipo: "usa_funcion", valor: "len", descripcion: "Debes usar len() para calcular el promedio" },
@@ -12908,6 +12933,7 @@ const CURSO = {
           codigoInicial: "gastos = [12, 30, 8, 45]\ntotal = 0\n# Recorre la lista, acumula y muestra el resumen\n",
           solucionComentada: "# La lista de gastos del día\ngastos = [12, 30, 8, 45]\n\n# Acumulador que empieza en cero\ntotal = 0\n\nfor gasto in gastos:\n    # Mostramos cada gasto\n    print('Gasto:', gasto)\n    # Sumamos al acumulador\n    total = total + gasto\n\n# Resumen final, fuera del bucle\nprint('Total gastado:', total)\nprint('Número de gastos:', len(gastos))",
           validaciones: [
+        { tipo: "salida_igual", valor: "Gasto: 12\nGasto: 30\nGasto: 8\nGasto: 45\nTotal gastado: 95\nNúmero de gastos: 4\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "for ", descripcion: "Debes recorrer la lista con un bucle for" },
             { tipo: "usa_funcion", valor: "len", descripcion: "Debes usar len() para contar los gastos" },
@@ -13039,6 +13065,7 @@ const CURSO = {
           salidaEsperada: "<class 'tuple'>\nElementos: 2\nPrimero: 3\nSegundo: 8",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "<class 'tuple'>\nElementos: 2\nPrimero: 3\nSegundo: 8\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "variables", valor: ["coordenadas"], descripcion: "Debes crear la tupla coordenadas" },
             { tipo: "usa_funcion", valor: "type", descripcion: "Debes usar type() para mostrar el tipo" },
@@ -13182,6 +13209,7 @@ const CURSO = {
           salidaEsperada: "teclado\n45\nTras el intercambio: 20 10",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "teclado\n45\nTras el intercambio: 20 10\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "variables", valor: ["articulo", "precio"], descripcion: "Debes desempaquetar la tupla en articulo y precio" },
             { tipo: "contiene_codigo", valor: "= producto", descripcion: "Debes repartir la tupla producto con una asignación múltiple" },
@@ -13314,6 +13342,7 @@ const CURSO = {
           salidaEsperada: "['oscuro', 18]",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "['oscuro', 18]\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "list(", descripcion: "Debes convertir la tupla en lista con list()" },
             { tipo: "contiene_codigo", valor: "configuracion", descripcion: "Debes usar la tupla configuracion" },
@@ -13460,6 +13489,7 @@ const CURSO = {
           salidaEsperada: "Con repetidos: 5\nSin repetir: 3\n{'música', 'fútbol', 'cine'} (el orden puede variar)",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_contiene", valor: "Sin repetir: 3", descripcion: "Al quitar los repetidos deben quedar 3 intereses distintos" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "usa_funcion", valor: "set", descripcion: "Debes usar set() para eliminar los repetidos" },
             { tipo: "usa_funcion", valor: "len", descripcion: "Debes usar len() para contar" },
@@ -13600,6 +13630,7 @@ const CURSO = {
           salidaEsperada: "Comunes: {'python', 'sql'}\nProyecto completo: {'python', 'sql', 'java', 'r'}\nSolo en back: {'java'} (el orden puede variar)",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_contiene", valor: "Solo en back: {'java'}", descripcion: "La diferencia de conjuntos debe dar solo el elemento que no está en el otro" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "usa_funcion", valor: "set", descripcion: "Debes convertir las listas en conjuntos con set()" },
             { tipo: "contiene_codigo", valor: " & ", descripcion: "Debes usar la intersección para los lenguajes comunes" },
@@ -13634,6 +13665,7 @@ const CURSO = {
           codigoInicial: "equipo_a = ['ana@mail.com', 'luis@mail.com', 'sofia@mail.com']\nequipo_b = ['luis@mail.com', 'marta@mail.com']\n# Convierte a conjuntos y compara\n",
           solucionComentada: "# Las dos listas de correos\nequipo_a = ['ana@mail.com', 'luis@mail.com', 'sofia@mail.com']\nequipo_b = ['luis@mail.com', 'marta@mail.com']\n\n# Convertimos a conjuntos para poder operar\na = set(equipo_a)\nb = set(equipo_b)\n\n# Comunes a los dos equipos\nprint('En ambos:', a & b)\n\n# Todos los correos únicos del proyecto\nprint('Grupo completo:', a | b)\n\n# Solo los del equipo A\nprint('Solo en A:', a - b)",
           validaciones: [
+        { tipo: "salida_contiene", valor: "En ambos: {'luis@mail.com'}", descripcion: "La intersección debe dar exactamente el correo que está en los dos" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "usa_funcion", valor: "set", descripcion: "Debes convertir las listas en conjuntos con set()" },
             { tipo: "contiene_codigo", valor: "equipo_a", descripcion: "Debes usar la lista equipo_a" },
@@ -13765,6 +13797,7 @@ const CURSO = {
           salidaEsperada: "Nivel: 7\nClaves: 3",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "Nivel: 7\nClaves: 3\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "variables", valor: ["jugador"], descripcion: "Debes crear el diccionario jugador" },
             { tipo: "contiene_codigo", valor: "['nivel']", descripcion: "Debes acceder al valor de la clave nivel" },
@@ -13923,6 +13956,7 @@ const CURSO = {
           salidaEsperada: "{'peras': 7, 'uvas': 12}",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "{'peras': 7, 'uvas': 12}\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "inventario['peras'] = 7", descripcion: "Debes actualizar las peras a 7" },
             { tipo: "contiene_codigo", valor: "inventario['uvas']", descripcion: "Debes añadir la clave uvas" },
@@ -14069,6 +14103,7 @@ const CURSO = {
           salidaEsperada: "Miércoles: 0\nClaves: ['lunes', 'martes']\nValores: [120, 90]",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "Miércoles: 0\nClaves: ['lunes', 'martes']\nValores: [120, 90]\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: ".get(", descripcion: "Debes usar get() con un valor por defecto" },
             { tipo: "contiene_codigo", valor: ".keys()", descripcion: "Debes usar keys() para las claves" },
@@ -14211,6 +14246,7 @@ const CURSO = {
           salidaEsperada: "casa : 200\ncomida : 150\nocio : 80\nTotal gastado: 430",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "casa : 200\ncomida : 150\nocio : 80\nTotal gastado: 430\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: ".items()", descripcion: "Debes recorrer los pares con items()" },
             { tipo: "contiene_codigo", valor: "for ", descripcion: "Debes usar un bucle for" },
@@ -14339,6 +14375,7 @@ const CURSO = {
           salidaEsperada: "Cien años de soledad - 471 páginas\nEl principito - 96 páginas\nTotal de páginas: 567",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "Cien años de soledad - 471 páginas\nEl principito - 96 páginas\nTotal de páginas: 567\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "variables", valor: ["libros"], descripcion: "Debes crear la lista libros" },
             { tipo: "contiene_codigo", valor: "for ", descripcion: "Debes recorrer la lista con un bucle for" },
@@ -14373,6 +14410,7 @@ const CURSO = {
           codigoInicial: "canciones = [\n    {'titulo': 'Primera', 'duracion': 180},\n    {'titulo': 'Segunda', 'duracion': 240},\n    {'titulo': 'Tercera', 'duracion': 210}\n]\n# Recorre, muestra y calcula\n",
           solucionComentada: "# Cada canción es un diccionario dentro de una lista\ncanciones = [\n    {'titulo': 'Primera', 'duracion': 180},\n    {'titulo': 'Segunda', 'duracion': 240},\n    {'titulo': 'Tercera', 'duracion': 210}\n]\n\ntotal = 0\nfor cancion in canciones:\n    print(cancion['titulo'], '-', cancion['duracion'], 'segundos')\n    total = total + cancion['duracion']\n\nprint('Duración total:', total, 'segundos')\nprint('Duración media:', total / len(canciones), 'segundos')",
           validaciones: [
+        { tipo: "salida_igual", valor: "Primera - 180 segundos\nSegunda - 240 segundos\nTercera - 210 segundos\nDuración total: 630 segundos\nDuración media: 210.0 segundos\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "variables", valor: ["canciones"], descripcion: "Debes usar la lista canciones" },
             { tipo: "usa_funcion", valor: "len", descripcion: "Debes usar len() para calcular la media" },
@@ -14509,6 +14547,7 @@ const CURSO = {
           salidaEsperada: "[1, 4, 9, 16, 25, 36]\n[4, 16, 36]",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "[1, 4, 9, 16, 25, 36]\n[4, 16, 36]\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: " for ", descripcion: "Debes usar comprensiones con la estructura for" },
             { tipo: "contiene_codigo", valor: " if ", descripcion: "Debes filtrar los pares con un if dentro de la comprensión" },
@@ -14652,6 +14691,7 @@ const CURSO = {
           salidaEsperada: "{'queso': 15, 'vino': 20}\n{'pan': 4, 'queso': 30, 'vino': 40}",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "{'queso': 15, 'vino': 20}\n{'pan': 4, 'queso': 30, 'vino': 40}\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: ".items()", descripcion: "Debes recorrer los pares con items()" },
             { tipo: "contiene_codigo", valor: " for ", descripcion: "Debes usar comprensiones de diccionario" },
@@ -14788,6 +14828,7 @@ const CURSO = {
           salidaEsperada: "Ana - 8\nLuis - 6\nSofía - 9\nMedia: 7.666666666666667",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_igual", valor: "Ana - 8\nLuis - 6\nSofía - 9\nMedia: 7.666666666666667\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "variables", valor: ["clase"], descripcion: "Debes usar el diccionario clase" },
             { tipo: "contiene_codigo", valor: "for ", descripcion: "Debes recorrer la estructura con un bucle for" },
@@ -14924,12 +14965,13 @@ const CURSO = {
           salidaEsperada: "Horario fijo: (9, 18)\nProducto: pan 2\nCompra: ['pan', 'leche']\nDías de apertura: {'lunes', 'martes'}",
           entradasSimuladas: [],
           validaciones: [
+        { tipo: "salida_contiene", valor: "Producto: pan 2", descripcion: "Debe mostrar el nombre y el precio guardados en el diccionario" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "usa_funcion", valor: "set", descripcion: "Debes usar set() para el conjunto de días" },
             { tipo: "contiene_codigo", valor: " for ", descripcion: "Debes recorrer alguna estructura con un bucle for" },
             { tipo: "usa_funcion", valor: "print", descripcion: "Debes mostrar las estructuras con print()" }
           ],
-          solucionComentada: "# Tupla: datos que no cambian\nhorario = (9, 18)\n\n# Diccionario: consulta por nombre de campo\nproducto = {'nombre': 'pan', 'precio': 2}\n\n# Lista: colección que crece\ncompra = ['pan', 'leche']\n\n# Conjunto: sin duplicados y sin orden\ndias = set(['lunes', 'martes', 'lunes'])\n\nprint('Horario fijo:', horario)\nprint('Producto:', producto['nombre'], producto['precio'])\nprint('Compra:', compra)\nprint('Días de apertura:', dias)"
+          solucionComentada: "# Tupla: datos que no cambian\nhorario = (9, 18)\n\n# Diccionario: consulta por nombre de campo\nproducto = {'nombre': 'pan', 'precio': 2}\n\n# Lista: colección que crece\ncompra = ['pan', 'leche']\n\n# Conjunto: sin duplicados y sin orden\ndias = set(['lunes', 'martes', 'lunes'])\n\nprint('Horario fijo:', horario)\nprint('Producto:', producto['nombre'], producto['precio'])\n\n# Recorremos la lista con un bucle for\nprint('Lista de la compra:')\nfor articulo in compra:\n    print('-', articulo)\n\nprint('Días de apertura:', dias)"
         }
       ]
     },
@@ -15067,6 +15109,7 @@ const CURSO = {
           salidaEsperada: "La máquina eligió: <jugada al azar>\nEl resultado varía en cada partida: Empate, ¡Ganaste! o Perdiste",
           entradasSimuladas: ["piedra"],
           validaciones: [
+        { tipo: "salida_igual", valor: "Elige piedra, papel o tijera: piedra\nLa máquina eligió: papel\nPerdiste\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "usa_funcion", valor: "random.choice", descripcion: "Debes usar random.choice para la jugada de la máquina" },
             { tipo: "contiene_codigo", valor: "input(", descripcion: "Debes pedir la jugada con input()" },
@@ -15105,6 +15148,7 @@ const CURSO = {
           solucionComentada: "import random\n\n# Las tres jugadas posibles en una lista\nopciones = ['piedra', 'papel', 'tijera']\n\n# A quién vence cada jugada, para resolver las reglas\nvence_a = {'piedra': 'tijera', 'papel': 'piedra', 'tijera': 'papel'}\n\n# Marcador del duelo, llevado en un diccionario\nmarcador = {'ganadas': 0, 'perdidas': 0, 'empates': 0}\n\nprint('=== PIEDRA, PAPEL O TIJERA ===')\nrondas = int(input('¿Cuántas rondas quieres jugar? '))\n\nfor ronda in range(1, rondas + 1):\n    # Pedimos la jugada y la pasamos a minúsculas\n    jugada = input('Ronda ' + str(ronda) + ', elige piedra, papel o tijera: ').lower()\n\n    # Validamos la jugada antes de comparar\n    if jugada not in opciones:\n        print('Jugada no válida, esta ronda la pierdes.')\n        marcador['perdidas'] += 1\n    else:\n        # La máquina elige al azar de la lista de opciones\n        maquina = random.choice(opciones)\n        print('La máquina eligió:', maquina)\n\n        if jugada == maquina:\n            print('Empate')\n            marcador['empates'] += 1\n        elif vence_a[jugada] == maquina:\n            print('¡Ganaste la ronda!')\n            marcador['ganadas'] += 1\n        else:\n            print('Perdiste la ronda')\n            marcador['perdidas'] += 1\n\n# Resumen final recorriendo el diccionario\nprint('--- MARCADOR FINAL ---')\nfor clave in marcador:\n    print(clave, '=', marcador[clave])\n\nif marcador['ganadas'] > marcador['perdidas']:\n    print('Ganaste el duelo. ¡Bien jugado!')\nelif marcador['ganadas'] < marcador['perdidas']:\n    print('La máquina ganó el duelo. ¡Revancha!')\nelse:\n    print('El duelo terminó en empate.')",
           entradasSimuladas: ["3","piedra","papel","tijera"],
         validaciones: [
+        { tipo: "regex_salida", valor: "(Ganaste|Perdiste|empate)", descripcion: "El juego tiene que decir quién ganó cada ronda o el duelo" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "usa_funcion", valor: "random.choice", descripcion: "La máquina debe elegir con random.choice" },
             { tipo: "contiene_codigo", valor: "input(", descripcion: "Debes pedir datos al usuario con input()" },
@@ -15368,7 +15412,8 @@ const CURSO = {
         { id: "m4l5e2", tipo: "multiple", orden: 2, enunciado: "Con def saludar(nombre, saludo='Hola'):, ¿que imprime saludar('Ana')?", opciones: ["Hola, Ana", "nombre, Ana", "Hola, saludo", "Da un error por falta de argumentos"], respuestaCorrecta: 0, concepto: "valor_por_defecto", xp: 2, dificultad: 2, pista: "Al no enviar el segundo argumento se usa el valor de reserva.", explicacionCorrecta: "Asi es: al no enviar saludo, se usa 'Hola' y por eso imprime 'Hola, Ana'.", explicacionIncorrecta: "El segundo parametro es opcional: si no lo envias, toma su valor por defecto 'Hola'." },
         { id: "m4l5e3", tipo: "completar", orden: 3, enunciado: "Completa el hueco para que exponente valga 2 cuando no se indique nada.", codigoConHuecos: "def potencia(base, exponente=___):\n    return base ** exponente\n\nprint(potencia(5))", piezas: ["2", "0", "1", "None"], solucion: ["2"], concepto: "valor_por_defecto", xp: 1, dificultad: 1, pista: "Elevar al cuadrado significa exponente 2.", explicacionCorrecta: "Correcto: con exponente=2 la llamada potencia(5) devuelve 25.", explicacionIncorrecta: "Si el exponente por defecto fuera 0 o 1, potencia(5) valdria 1 o 5, no 25. El valor correcto es 2." },
         { id: "m4l5e4", tipo: "codigo", orden: 4, enunciado: "Crea una funcion llamada precio_final que reciba un precio y un descuento con valor por defecto 0. Debe devolver el precio menos el descuento. Imprime precio_final(100) y precio_final(100, 20).", codigoInicial: "# Define aqui tu funcion precio_final\n", salidaEsperada: "100\n80", entradasSimuladas: [], validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def precio_final", descripcion: "Debes definir la funcion precio_final" }, { tipo: "contiene_codigo", valor: "= 0", descripcion: "El parametro descuento debe tener 0 como valor por defecto" }, { tipo: "salida_igual", valor: "100\n80", descripcion: "La salida debe ser 100 y luego 80" }], solucionComentada: "# descuento es opcional: si no llega, vale 0\ndef precio_final(precio, descuento=0):\n    return precio - descuento\n\n# Primera llamada: sin descuento\nprint(precio_final(100))\n# Segunda llamada: con 20 de descuento\nprint(precio_final(100, 20))", concepto: "valor_por_defecto", xp: 2, dificultad: 2, pista: "Escribe descuento=0 en la cabecera y usa return precio - descuento.", explicacionCorrecta: "¡Muy bien! Has creado una funcion flexible que funciona con uno o con dos argumentos.", explicacionIncorrecta: "Comprueba que el parametro descuento tenga valor por defecto 0 y que la funcion devuelva la resta." },
-        { id: "m4l5e5", tipo: "proyecto", orden: 5, enunciado: "Proyecto de la semana: tu recetario de funciones. Crea un pequeno programa con al menos cuatro funciones: una sin parametros, una con un parametro obligatorio, una con un valor por defecto y una que devuelva un calculo. Llamalas al final e imprime sus resultados.", concepto: "proyecto_funciones", xp: 3, dificultad: 3, pista: "Antes de escribir, anota en un papel el nombre y los parametros de cada funcion.", explicacionCorrecta: "¡Fantastico! Has construido un pequeno programa modular: cada funcion tiene una responsabilidad y todas se reutilizan desde el final del archivo.", explicacionIncorrecta: "Revisa que existan cuatro funciones con def, que al menos una tenga un parametro con valor por defecto y que todas se llamen despues de definirse.", requisitos: ["Define al menos cuatro funciones con def y nombres claros.", "Una de las funciones no lleva parametros.", "Otra recibe un parametro obligatorio.", "Otra usa un valor por defecto.", "Al menos una devuelve un valor con return.", "Llama a todas las funciones al final e imprime los resultados."], rubrica: ["Las funciones se definen con def y nombres que explican su proposito.", "El programa se ejecuta sin errores de indentacion.", "La funcion con valor por defecto funciona al llamarla con y sin ese argumento.", "La salida es ordenada y se entiende que resultado corresponde a cada funcion."], codigoInicial: "# Proyecto: recetario de funciones\n# 1) funcion sin parametros\n# 2) funcion con un parametro obligatorio\n# 3) funcion con valor por defecto\n# 4) funcion que devuelve un calculo\n", solucionComentada: "# Funcion sin parametros: siempre hace lo mismo\ndef saludar_general():\n    print('Hola a todos')\n\n# Funcion con un parametro obligatorio\ndef saludar_persona(nombre):\n    print('Hola,', nombre)\n\n# Funcion con un parametro obligatorio y otro con valor por defecto\ndef despedir(nombre, mensaje='Adios'):\n    return mensaje + ', ' + nombre\n\n# Funcion que devuelve un calculo\ndef doblar(n):\n    return n * 2\n\n# Llamadas: todas despues de sus definiciones\nsaludar_general()\nsaludar_persona('Ana')\nprint(despedir('Luis'))\nprint(despedir('Marta', 'Hasta pronto'))\nprint('El doble de 5 es', doblar(5))", validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def ", descripcion: "Debes definir funciones con def" }, { tipo: "contiene_codigo", valor: "return", descripcion: "Al menos una funcion debe devolver un valor" }, { tipo: "contiene_codigo", valor: "print(", descripcion: "Debes imprimir los resultados" }] }
+        { id: "m4l5e5", tipo: "proyecto", orden: 5, enunciado: "Proyecto de la semana: tu recetario de funciones. Crea un pequeno programa con al menos cuatro funciones: una sin parametros, una con un parametro obligatorio, una con un valor por defecto y una que devuelva un calculo. Llamalas al final e imprime sus resultados.", concepto: "proyecto_funciones", xp: 3, dificultad: 3, pista: "Antes de escribir, anota en un papel el nombre y los parametros de cada funcion.", explicacionCorrecta: "¡Fantastico! Has construido un pequeno programa modular: cada funcion tiene una responsabilidad y todas se reutilizan desde el final del archivo.", explicacionIncorrecta: "Revisa que existan cuatro funciones con def, que al menos una tenga un parametro con valor por defecto y que todas se llamen despues de definirse.", requisitos: ["Define al menos cuatro funciones con def y nombres claros.", "Una de las funciones no lleva parametros.", "Otra recibe un parametro obligatorio.", "Otra usa un valor por defecto.", "Al menos una devuelve un valor con return.", "Llama a todas las funciones al final e imprime los resultados."], rubrica: ["Las funciones se definen con def y nombres que explican su proposito.", "El programa se ejecuta sin errores de indentacion.", "La funcion con valor por defecto funciona al llamarla con y sin ese argumento.", "La salida es ordenada y se entiende que resultado corresponde a cada funcion."], codigoInicial: "# Proyecto: recetario de funciones\n# 1) funcion sin parametros\n# 2) funcion con un parametro obligatorio\n# 3) funcion con valor por defecto\n# 4) funcion que devuelve un calculo\n", solucionComentada: "# Funcion sin parametros: siempre hace lo mismo\ndef saludar_general():\n    print('Hola a todos')\n\n# Funcion con un parametro obligatorio\ndef saludar_persona(nombre):\n    print('Hola,', nombre)\n\n# Funcion con un parametro obligatorio y otro con valor por defecto\ndef despedir(nombre, mensaje='Adios'):\n    return mensaje + ', ' + nombre\n\n# Funcion que devuelve un calculo\ndef doblar(n):\n    return n * 2\n\n# Llamadas: todas despues de sus definiciones\nsaludar_general()\nsaludar_persona('Ana')\nprint(despedir('Luis'))\nprint(despedir('Marta', 'Hasta pronto'))\nprint('El doble de 5 es', doblar(5))", validaciones: [
+        { tipo: "salida_igual", valor: "Hola a todos\nHola, Ana\nAdios, Luis\nHasta pronto, Marta\nEl doble de 5 es 10\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def ", descripcion: "Debes definir funciones con def" }, { tipo: "contiene_codigo", valor: "return", descripcion: "Al menos una funcion debe devolver un valor" }, { tipo: "contiene_codigo", valor: "print(", descripcion: "Debes imprimir los resultados" }] }
       ]
     },
     {
@@ -15515,7 +15560,8 @@ const CURSO = {
         { id: "m4l10e2", tipo: "multiple", orden: 2, enunciado: "¿Para que sirve key=lambda p: p[1] dentro de sorted?", opciones: ["Para ordenar los elementos usando el segundo valor de cada uno", "Para imprimir la lista al reves", "Para eliminar el segundo elemento de cada tupla", "Para contar cuantos elementos hay"], respuestaCorrecta: 0, concepto: "sorted_key", xp: 2, dificultad: 2, pista: "key le dice a sorted que valor debe comparar.", explicacionCorrecta: "Exacto: la clave indica que valor se usa para comparar y ordenar los elementos.", explicacionIncorrecta: "key no imprime ni borra nada: define el valor por el que sorted compara los elementos; aqui, el segundo de cada tupla." },
         { id: "m4l10e3", tipo: "completar", orden: 3, enunciado: "Completa el hueco para crear una funcion anonima que doble un numero.", codigoConHuecos: "doble = ___ x: x * 2\nprint(doble(5))", piezas: ["lambda", "def", "func", "return"], solucion: ["lambda"], concepto: "sintaxis_lambda", xp: 1, dificultad: 1, pista: "Es la palabra clave que crea funciones anonimas.", explicacionCorrecta: "Correcto: lambda x: x * 2 y la salida es 10.", explicacionIncorrecta: "La palabra que inicia una funcion anonima es lambda; def necesita una funcion con nombre y un cuerpo indentado." },
         { id: "m4l10e4", tipo: "codigo", orden: 4, enunciado: "Usa sorted con una funcion lambda para ordenar la lista ['Marta', 'Ana', 'Luis'] por la longitud de cada nombre. Imprime el resultado.", codigoInicial: "nombres = ['Marta', 'Ana', 'Luis']\n# Ordena la lista con sorted y una lambda\n", salidaEsperada: "['Ana', 'Luis', 'Marta']", entradasSimuladas: [], validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "lambda", descripcion: "Debes usar una funcion lambda" }, { tipo: "salida_igual", valor: "['Ana', 'Luis', 'Marta']", descripcion: "La salida debe ser la lista ordenada por longitud" }], solucionComentada: "nombres = ['Marta', 'Ana', 'Luis']\n\n# La clave de ordenacion es la longitud de cada nombre\nordenados = sorted(nombres, key=lambda n: len(n))\nprint(ordenados)", concepto: "sorted_key", xp: 2, dificultad: 2, pista: "Usa key=lambda n: len(n).", explicacionCorrecta: "¡Muy bien! Ana tiene 3 letras, Luis 4 y Marta 5, asi que quedan en ese orden.", explicacionIncorrecta: "Revisa que la lambda devuelva len(n) para que sorted compare las longitudes y no los nombres alfabeticamente." },
-        { id: "m4l10e5", tipo: "proyecto", orden: 5, enunciado: "Proyecto de la semana: una fabrica de operaciones. Crea una funcion crear_operacion que reciba el texto 'sumar' o 'multiplicar' y devuelva la lambda correspondiente. Usa tambien sorted con una lambda como clave e incluye un parametro con valor por defecto. Imprime al menos dos resultados.", concepto: "proyecto_lambda", xp: 3, dificultad: 3, pista: "Primero escribe las funciones pensando en que debe devolver cada una.", explicacionCorrecta: "¡Excelente! Has combinado fabricas de funciones, lambdas y ordenacion: tres ideas potentes trabajando juntas.", explicacionIncorrecta: "Comprueba que crear_operacion devuelva una lambda (no su resultado), que uses sorted con key y que haya un parametro con valor por defecto.", requisitos: ["Define una funcion crear_operacion que devuelva una lambda segun el texto que reciba.", "Usa sorted con una funcion lambda como clave de ordenacion.", "Incluye al menos un parametro con valor por defecto.", "Imprime al menos dos resultados distintos.", "Da nombres claros a las funciones y a las variables."], rubrica: ["crear_operacion devuelve una funcion, no el resultado de ejecutarla.", "La lambda usada en sorted ordena de verdad por el criterio pedido.", "El parametro con valor por defecto funciona al llamarlo con y sin ese argumento.", "La salida demuestra que las dos operaciones dan resultados distintos."], codigoInicial: "# Proyecto: fabrica de operaciones\n# 1) crear_operacion(nombre) que devuelva una lambda\n# 2) una funcion que ordene con sorted y key=lambda\n# 3) un parametro con valor por defecto\n", solucionComentada: "# Fabrica: devuelve una lambda segun la operacion pedida\ndef crear_operacion(nombre):\n    if nombre == 'sumar':\n        return lambda a, b: a + b\n    return lambda a, b: a * b\n\n# Ordena una lista de palabras por su longitud\ndef ordenar_por_longitud(palabras, inverso=False):\n    return sorted(palabras, key=lambda p: len(p), reverse=inverso)\n\nsumar = crear_operacion('sumar')\nmultiplicar = crear_operacion('multiplicar')\nprint(sumar(3, 4))\nprint(multiplicar(3, 4))\nprint(ordenar_por_longitud(['Marta', 'Ana', 'Luis']))\nprint(ordenar_por_longitud(['Marta', 'Ana', 'Luis'], inverso=True))", validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "lambda", descripcion: "Debes usar al menos dos funciones lambda" }, { tipo: "contiene_codigo", valor: "def ", descripcion: "Debes definir funciones con def" }, { tipo: "contiene_codigo", valor: "sorted", descripcion: "Debes ordenar con sorted" }] }
+        { id: "m4l10e5", tipo: "proyecto", orden: 5, enunciado: "Proyecto de la semana: una fabrica de operaciones. Crea una funcion crear_operacion que reciba el texto 'sumar' o 'multiplicar' y devuelva la lambda correspondiente. Usa tambien sorted con una lambda como clave e incluye un parametro con valor por defecto. Imprime al menos dos resultados.", concepto: "proyecto_lambda", xp: 3, dificultad: 3, pista: "Primero escribe las funciones pensando en que debe devolver cada una.", explicacionCorrecta: "¡Excelente! Has combinado fabricas de funciones, lambdas y ordenacion: tres ideas potentes trabajando juntas.", explicacionIncorrecta: "Comprueba que crear_operacion devuelva una lambda (no su resultado), que uses sorted con key y que haya un parametro con valor por defecto.", requisitos: ["Define una funcion crear_operacion que devuelva una lambda segun el texto que reciba.", "Usa sorted con una funcion lambda como clave de ordenacion.", "Incluye al menos un parametro con valor por defecto.", "Imprime al menos dos resultados distintos.", "Da nombres claros a las funciones y a las variables."], rubrica: ["crear_operacion devuelve una funcion, no el resultado de ejecutarla.", "La lambda usada en sorted ordena de verdad por el criterio pedido.", "El parametro con valor por defecto funciona al llamarlo con y sin ese argumento.", "La salida demuestra que las dos operaciones dan resultados distintos."], codigoInicial: "# Proyecto: fabrica de operaciones\n# 1) crear_operacion(nombre) que devuelva una lambda\n# 2) una funcion que ordene con sorted y key=lambda\n# 3) un parametro con valor por defecto\n", solucionComentada: "# Fabrica: devuelve una lambda segun la operacion pedida\ndef crear_operacion(nombre):\n    if nombre == 'sumar':\n        return lambda a, b: a + b\n    return lambda a, b: a * b\n\n# Ordena una lista de palabras por su longitud\ndef ordenar_por_longitud(palabras, inverso=False):\n    return sorted(palabras, key=lambda p: len(p), reverse=inverso)\n\nsumar = crear_operacion('sumar')\nmultiplicar = crear_operacion('multiplicar')\nprint(sumar(3, 4))\nprint(multiplicar(3, 4))\nprint(ordenar_por_longitud(['Marta', 'Ana', 'Luis']))\nprint(ordenar_por_longitud(['Marta', 'Ana', 'Luis'], inverso=True))", validaciones: [
+        { tipo: "salida_igual", valor: "7\n12\n['Ana', 'Luis', 'Marta']\n['Marta', 'Luis', 'Ana']\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "lambda", descripcion: "Debes usar al menos dos funciones lambda" }, { tipo: "contiene_codigo", valor: "def ", descripcion: "Debes definir funciones con def" }, { tipo: "contiene_codigo", valor: "sorted", descripcion: "Debes ordenar con sorted" }] }
       ]
     },
     {
@@ -15663,7 +15709,8 @@ const CURSO = {
         { id: "m4l15e2", tipo: "multiple", orden: 2, enunciado: "¿Para que sirve el guard if __name__ == '__main__'?", opciones: ["Para que las pruebas solo se ejecuten al abrir el archivo directamente y no al importarlo", "Para que el programa vaya mas rapido", "Para definir funciones con def", "Para impedir que el programa pida datos con input"], respuestaCorrecta: 0, concepto: "punto_de_entrada", xp: 2, dificultad: 2, pista: "Piensa en que pasa cuando otro archivo hace import de este.", explicacionCorrecta: "Exacto: el guard separa el codigo de arranque para que el modulo sea seguro de importar.", explicacionIncorrecta: "El guard no acelera ni define nada: controla cuando se ejecuta el codigo que esta dentro, protegiendolo de los import." },
         { id: "m4l15e3", tipo: "completar", orden: 3, enunciado: "Completa el valor que falta para que el guard funcione.", codigoConHuecos: "def saludar():\n    print('Hola')\n\nif __name__ == \"___\":\n    saludar()", piezas: ["__main__", "main", "principal", "__name__"], solucion: ["__main__"], concepto: "__main__", xp: 1, dificultad: 1, pista: "Es el nombre especial del programa principal, con guiones bajos dobles.", explicacionCorrecta: "Correcto: se compara con la cadena '__main__' y asi la llamada se hace solo cuando corresponde.", explicacionIncorrecta: "El valor debe ser '__main__', con dos guiones bajos a cada lado; es un nombre especial de Python." },
         { id: "m4l15e4", tipo: "codigo", orden: 4, enunciado: "Define una funcion llamada bienvenida que imprima 'Bienvenido' y anade un guard if __name__ == '__main__': que la llame. La salida debe ser una sola linea.", codigoInicial: "# Define la funcion y el guard\n", salidaEsperada: "Bienvenido", entradasSimuladas: [], validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "__main__", descripcion: "Debes usar el guard if __name__ == '__main__'" }, { tipo: "salida_igual", valor: "Bienvenido", descripcion: "La salida debe ser Bienvenido" }], solucionComentada: "# Funcion que muestra el mensaje\ndef bienvenida():\n    print('Bienvenido')\n\n# Guard: solo se ejecuta si este archivo es el principal\nif __name__ == '__main__':\n    bienvenida()", concepto: "punto_de_entrada", xp: 2, dificultad: 2, pista: "Recuerda indentar la llamada dentro del if.", explicacionCorrecta: "¡Bien! Tu archivo ya sabe distinguir si es el programa principal o un modulo importado.", explicacionIncorrecta: "Revisa que la llamada a bienvenida() este indentada dentro del if y que la comparacion use '__main__'." },
-        { id: "m4l15e5", tipo: "proyecto", orden: 5, enunciado: "Proyecto de la semana: una mini calculadora modular. Crea cuatro funciones (sumar, restar, multiplicar y dividir) que reciban dos numeros y devuelvan el resultado, y protege las llamadas de prueba dentro del guard if __name__ == '__main__'.", concepto: "proyecto_modular", xp: 3, dificultad: 3, pista: "Escribe todas las funciones primero y deja las llamadas para el final, dentro del if.", explicacionCorrecta: "¡Estupendo! Has escrito un modulo profesional: funciones de calculo arriba y pruebas protegidas en el punto de entrada.", explicacionIncorrecta: "Comprueba que existen las cuatro funciones con def, que cada una devuelve su resultado con return y que las llamadas estan dentro del guard.", requisitos: ["Define cuatro funciones con def: sumar, restar, multiplicar y dividir.", "Cada funcion recibe dos parametros y devuelve el resultado con return.", "Las funciones aparecen antes del guard.", "Las llamadas de prueba estan dentro de if __name__ == '__main__':.", "Se imprimen al menos dos resultados distintos."], rubrica: ["Las cuatro funciones existen y devuelven su resultado con return.", "Ninguna funcion imprime por dentro: solo calculan y devuelven.", "El guard usa la comparacion correcta con '__main__'.", "La salida muestra los resultados esperados de las operaciones."], codigoInicial: "# Proyecto: mini calculadora modular\n# 1) funciones sumar, restar, multiplicar y dividir\n# 2) guard if __name__ == '__main__' con las pruebas\n", solucionComentada: "# Funciones de calculo: cada una devuelve su resultado\ndef sumar(a, b):\n    return a + b\n\n\ndef restar(a, b):\n    return a - b\n\n\ndef multiplicar(a, b):\n    return a * b\n\n\ndef dividir(a, b):\n    return a / b\n\n\n# Las pruebas solo se ejecutan si abrimos este archivo directamente\nif __name__ == '__main__':\n    print(sumar(3, 4))\n    print(multiplicar(3, 4))", validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "__main__", descripcion: "Debes usar el guard if __name__ == '__main__'" }, { tipo: "contiene_codigo", valor: "def ", descripcion: "Debes definir funciones con def" }, { tipo: "contiene_codigo", valor: "return", descripcion: "Las funciones deben devolver el resultado con return" }] }
+        { id: "m4l15e5", tipo: "proyecto", orden: 5, enunciado: "Proyecto de la semana: una mini calculadora modular. Crea cuatro funciones (sumar, restar, multiplicar y dividir) que reciban dos numeros y devuelvan el resultado, y protege las llamadas de prueba dentro del guard if __name__ == '__main__'.", concepto: "proyecto_modular", xp: 3, dificultad: 3, pista: "Escribe todas las funciones primero y deja las llamadas para el final, dentro del if.", explicacionCorrecta: "¡Estupendo! Has escrito un modulo profesional: funciones de calculo arriba y pruebas protegidas en el punto de entrada.", explicacionIncorrecta: "Comprueba que existen las cuatro funciones con def, que cada una devuelve su resultado con return y que las llamadas estan dentro del guard.", requisitos: ["Define cuatro funciones con def: sumar, restar, multiplicar y dividir.", "Cada funcion recibe dos parametros y devuelve el resultado con return.", "Las funciones aparecen antes del guard.", "Las llamadas de prueba estan dentro de if __name__ == '__main__':.", "Se imprimen al menos dos resultados distintos."], rubrica: ["Las cuatro funciones existen y devuelven su resultado con return.", "Ninguna funcion imprime por dentro: solo calculan y devuelven.", "El guard usa la comparacion correcta con '__main__'.", "La salida muestra los resultados esperados de las operaciones."], codigoInicial: "# Proyecto: mini calculadora modular\n# 1) funciones sumar, restar, multiplicar y dividir\n# 2) guard if __name__ == '__main__' con las pruebas\n", solucionComentada: "# Funciones de calculo: cada una devuelve su resultado\ndef sumar(a, b):\n    return a + b\n\n\ndef restar(a, b):\n    return a - b\n\n\ndef multiplicar(a, b):\n    return a * b\n\n\ndef dividir(a, b):\n    return a / b\n\n\n# Las pruebas solo se ejecutan si abrimos este archivo directamente\nif __name__ == '__main__':\n    print(sumar(3, 4))\n    print(multiplicar(3, 4))", validaciones: [
+        { tipo: "salida_igual", valor: "7\n12\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "__main__", descripcion: "Debes usar el guard if __name__ == '__main__'" }, { tipo: "contiene_codigo", valor: "def ", descripcion: "Debes definir funciones con def" }, { tipo: "contiene_codigo", valor: "return", descripcion: "Las funciones deben devolver el resultado con return" }] }
       ]
     },
     {
@@ -15780,7 +15827,8 @@ const CURSO = {
         { id: "m4l19e2", tipo: "multiple", orden: 2, enunciado: "Quieres saber cuantos contactos hay en la lista contactos. ¿Que funcion usas y como?", opciones: ["len(contactos)", "contactos.len()", "count(contactos)", "contactos.total"], respuestaCorrecta: 0, concepto: "funciones_auxiliares", xp: 2, dificultad: 1, pista: "Es la misma funcion que usaste para contar argumentos.", explicacionCorrecta: "Exacto: len(contactos) devuelve el numero de elementos de la lista.", explicacionIncorrecta: "En Python len() es una funcion que recibe la lista; no es un metodo de la lista ni existe contactos.total." },
         { id: "m4l19e3", tipo: "completar", orden: 3, enunciado: "Completa la funcion que agrega un contacto a la lista.", codigoConHuecos: "def agregar_contacto(lista, nombre):\n    lista.append(___)\n    print('Contacto agregado')", piezas: ["nombre", "lista", "append", "print"], solucion: ["nombre"], concepto: "funciones_auxiliares", xp: 1, dificultad: 1, pista: "Quieres anadir el nombre que llego como parametro.", explicacionCorrecta: "Correcto: append recibe el nombre que la funcion acaba de recibir.", explicacionIncorrecta: "Dentro de append debes poner el parametro que contiene el dato nuevo, es decir, nombre." },
         { id: "m4l19e4", tipo: "codigo", orden: 4, enunciado: "Crea dos funciones: agregar_contacto(lista, nombre), que anada el nombre a la lista, y mostrar_total(lista), que imprima 'Contactos: N'. Crea una lista vacia, agrega 'Ana' y 'Luis' e imprime el total.", codigoInicial: "contactos = []\n# Define aqui tus dos funciones\n", salidaEsperada: "Contactos: 2", entradasSimuladas: [], validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def ", descripcion: "Debes definir las funciones con def" }, { tipo: "usa_funcion", valor: "len", descripcion: "Debes usar len() para contar" }, { tipo: "salida_igual", valor: "Contactos: 2", descripcion: "La salida debe ser Contactos: 2" }], solucionComentada: "contactos = []\n\n\ndef agregar_contacto(lista, nombre):\n    lista.append(nombre)\n\n\ndef mostrar_total(lista):\n    print('Contactos:', len(lista))\n\n\nagregar_contacto(contactos, 'Ana')\nagregar_contacto(contactos, 'Luis')\nmostrar_total(contactos)", concepto: "diseno_modular", xp: 2, dificultad: 2, pista: "agregar_contacto usa append y mostrar_total usa len dentro del print.", explicacionCorrecta: "¡Muy bien! Dos funciones con una responsabilidad cada una y la lista compartida.", explicacionIncorrecta: "Comprueba que agregar_contacto haga append del nombre y que mostrar_total imprima 'Contactos:' seguido de len(lista)." },
-        { id: "m4l19e5", tipo: "proyecto", orden: 5, enunciado: "Proyecto guiado: completa la agenda. Pide un nombre con input(), agregalo a la lista con una funcion, muestra todos los contactos y el total. Organiza el programa en al menos tres funciones y protege las llamadas con el guard if __name__ == '__main__'.", concepto: "proyecto_modular", xp: 3, dificultad: 3, pista: "Primero escribe las funciones, despues el guard con el input y las llamadas.", explicacionCorrecta: "¡Excelente trabajo! Has construido un programa modular completo: datos compartidos, funciones con una responsabilidad y un punto de entrada protegido.", explicacionIncorrecta: "Revisa que existan al menos tres funciones con def, que el input se pida fuera de las funciones de calculo y que las llamadas esten dentro del guard.", requisitos: ["Crea una lista llamada contactos.", "Define al menos tres funciones: agregar_contacto, mostrar_contactos y contar_contactos.", "Pide el nombre del contacto con input().", "Muestra la lista y el total de contactos.", "Protege las llamadas dentro de if __name__ == '__main__':."], rubrica: ["Las tres funciones existen y tienen nombres claros.", "agregar_contacto anade a la lista; contar_contactos usa len y devuelve el numero.", "El input se usa en el programa principal, no dentro de las funciones de calculo.", "La salida muestra el contacto agregado y el total."], codigoInicial: "# Proyecto guiado: agenda de contactos\ncontactos = []\n# 1) agregar_contacto(lista, nombre)\n# 2) mostrar_contactos(lista)\n# 3) contar_contactos(lista)\n# 4) guard __main__ con input y llamadas\n", entradasSimuladas: ["Ana"], solucionComentada: "# Lista que guarda los contactos\ncontactos = []\n\n\ndef agregar_contacto(lista, nombre):\n    lista.append(nombre)\n    print('Agregado:', nombre)\n\n\ndef mostrar_contactos(lista):\n    print('Contactos:', lista)\n\n\ndef contar_contactos(lista):\n    return len(lista)\n\n\nif __name__ == '__main__':\n    nombre = input('Nombre del contacto: ')\n    agregar_contacto(contactos, nombre)\n    mostrar_contactos(contactos)\n    print('Total:', contar_contactos(contactos))", validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def ", descripcion: "Debes definir funciones con def" }, { tipo: "usa_funcion", valor: "input", descripcion: "Debes pedir el nombre con input()" }, { tipo: "contiene_codigo", valor: "__main__", descripcion: "Debes proteger las llamadas con el guard" }] }
+        { id: "m4l19e5", tipo: "proyecto", orden: 5, enunciado: "Proyecto guiado: completa la agenda. Pide un nombre con input(), agregalo a la lista con una funcion, muestra todos los contactos y el total. Organiza el programa en al menos tres funciones y protege las llamadas con el guard if __name__ == '__main__'.", concepto: "proyecto_modular", xp: 3, dificultad: 3, pista: "Primero escribe las funciones, despues el guard con el input y las llamadas.", explicacionCorrecta: "¡Excelente trabajo! Has construido un programa modular completo: datos compartidos, funciones con una responsabilidad y un punto de entrada protegido.", explicacionIncorrecta: "Revisa que existan al menos tres funciones con def, que el input se pida fuera de las funciones de calculo y que las llamadas esten dentro del guard.", requisitos: ["Crea una lista llamada contactos.", "Define al menos tres funciones: agregar_contacto, mostrar_contactos y contar_contactos.", "Pide el nombre del contacto con input().", "Muestra la lista y el total de contactos.", "Protege las llamadas dentro de if __name__ == '__main__':."], rubrica: ["Las tres funciones existen y tienen nombres claros.", "agregar_contacto anade a la lista; contar_contactos usa len y devuelve el numero.", "El input se usa en el programa principal, no dentro de las funciones de calculo.", "La salida muestra el contacto agregado y el total."], codigoInicial: "# Proyecto guiado: agenda de contactos\ncontactos = []\n# 1) agregar_contacto(lista, nombre)\n# 2) mostrar_contactos(lista)\n# 3) contar_contactos(lista)\n# 4) guard __main__ con input y llamadas\n", entradasSimuladas: ["Ana"], solucionComentada: "# Lista que guarda los contactos\ncontactos = []\n\n\ndef agregar_contacto(lista, nombre):\n    lista.append(nombre)\n    print('Agregado:', nombre)\n\n\ndef mostrar_contactos(lista):\n    print('Contactos:', lista)\n\n\ndef contar_contactos(lista):\n    return len(lista)\n\n\nif __name__ == '__main__':\n    nombre = input('Nombre del contacto: ')\n    agregar_contacto(contactos, nombre)\n    mostrar_contactos(contactos)\n    print('Total:', contar_contactos(contactos))", validaciones: [
+        { tipo: "salida_igual", valor: "Nombre del contacto: Ana\nAgregado: Ana\nContactos: ['Ana']\nTotal: 1\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def ", descripcion: "Debes definir funciones con def" }, { tipo: "usa_funcion", valor: "input", descripcion: "Debes pedir el nombre con input()" }, { tipo: "contiene_codigo", valor: "__main__", descripcion: "Debes proteger las llamadas con el guard" }] }
       ]
     },
     {
@@ -15810,7 +15858,8 @@ const CURSO = {
         { id: "m4l20e2", tipo: "multiple", orden: 2, enunciado: "¿Por que conviene dividir el Ahorcado en varias funciones?", opciones: ["Porque cada funcion hace una tarea concreta y se puede probar y corregir por separado", "Porque asi el azar funciona mejor", "Porque sin funciones no se puede usar input", "Porque Python obliga a tener tres funciones en cada programa"], respuestaCorrecta: 0, concepto: "funciones", xp: 2, dificultad: 1, pista: "Piensa en como encontrarias un error en mostrar_palabra.", explicacionCorrecta: "Exacto: funciones pequenas y con un proposito claro hacen el juego mucho mas facil de construir y arreglar.", explicacionIncorrecta: "Python no obliga a nada de eso: dividir en funciones es una decision de diseno para que el programa sea mas claro y testeable." },
         { id: "m4l20e3", tipo: "predice_salida", orden: 3, enunciado: "¿Que imprime este programa?", codigo: "def mostrar(palabra, acertadas):\n    r = ''\n    for letra in palabra:\n        r += letra if letra in acertadas else '_'\n    return r\n\nprint(mostrar('sol', ['s', 'o']))", salidaCorrecta: "so_", distractores: ["s_o", "sol", "___"], concepto: "estado_del_juego", xp: 1, dificultad: 3, pista: "Comprueba letra a letra si esta en la lista de acertadas.", explicacionCorrecta: "¡Muy bien! La s y la o estan acertadas y la l todavia no, asi que queda 'so_'.", explicacionIncorrecta: "Recorre 'sol': la s esta en la lista, la o tambien y la l no, por eso el resultado es 'so_'." },
         { id: "m4l20e4", tipo: "codigo", orden: 4, enunciado: "Crea una funcion llamada ocultar que reciba una palabra y una lista de letras acertadas, y devuelva la palabra con guiones bajos en las letras que no se acertaron, separando cada caracter con un espacio (quita el espacio sobrante del final con strip). Prueba con ocultar('casa', ['c', 'a']) e imprime el resultado.", codigoInicial: "# Define aqui tu funcion ocultar\n", salidaEsperada: "c a _ a", entradasSimuladas: [], validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def ocultar", descripcion: "Debes definir la funcion ocultar" }, { tipo: "contiene_codigo", valor: "for ", descripcion: "Debes recorrer la palabra con un bucle for" }, { tipo: "salida_igual", valor: "c a _ a", descripcion: "La salida debe ser c a _ a" }], solucionComentada: "# Recorremos la palabra mostrando las acertadas y ocultando el resto\ndef ocultar(palabra, acertadas):\n    resultado = ''\n    for letra in palabra:\n        if letra in acertadas:\n            resultado += letra + ' '\n        else:\n            resultado += '_ '\n    return resultado.strip()\n\nprint(ocultar('casa', ['c', 'a']))", concepto: "estado_del_juego", xp: 2, dificultad: 3, pista: "Acumula en una cadena y usa strip() al final.", explicacionCorrecta: "¡Excelente! Ya tienes la pieza mas visual del Ahorcado funcionando.", explicacionIncorrecta: "Revisa que anadas un espacio tras cada caracter y que strip() quite el espacio final; con 'casa' y ['c', 'a'] debe salir 'c a _ a'." },
-        { id: "m4l20e5", tipo: "proyecto", orden: 5, enunciado: "Proyecto final del modulo: el Ahorcado completo. La maquina elige una palabra al azar de una lista, el jugador propone letras con input() y gana si completa la palabra antes de 6 fallos. Divide el juego en al menos tres funciones y protege el arranque con el guard.", concepto: "proyecto_ahorcado", xp: 3, dificultad: 3, pista: "Empieza importando random, define las funciones y deja el bucle principal para el final.", explicacionCorrecta: "¡Increible! Has construido el Ahorcado combinando funciones, listas, azar, bucles y el guard: un proyecto de verdad.", explicacionIncorrecta: "Comprueba que existan al menos tres funciones con def, que el bucle termine a los 6 fallos o al acertar la palabra, y que uses random y len.", requisitos: ["Elige la palabra con random.choice a partir de una lista y fija random.seed(0) para poder probar siempre lo mismo.", "Pide letras con input() dentro de un bucle con condicion de salida.", "Muestra la palabra con guiones bajos en las letras no acertadas.", "Lleva la cuenta de fallos y termina al llegar a 6 o al acertar la palabra.", "Define al menos tres funciones con def.", "Usa len() y anuncia la victoria y la derrota con mensajes distintos."], rubrica: ["El juego se ejecuta sin errores y no se queda en un bucle infinito.", "Cada funcion tiene una responsabilidad clara y un nombre descriptivo.", "La palabra oculta se muestra correctamente en cada turno.", "El final distingue claramente si el jugador gano o perdio."], codigoInicial: "# Proyecto: Ahorcado\nimport random\n\n# Lista de palabras y maximo de fallos\n# 1) funcion para elegir palabra\n# 2) funcion para mostrar la palabra oculta\n# 3) funcion jugar con el bucle principal\n# 4) guard if __name__ == '__main__'\n", entradasSimuladas: ["a", "e", "i", "o", "u", "c", "s", "p", "t", "n", "r", "l", "d", "m", "b", "g", "v", "y", "f", "h", "z", "x", "j", "k", "q", "w"], solucionComentada: "import random\n\nPALABRAS = ['python', 'casa', 'perro', 'escuela', 'juego', 'raton']\nFALLOS_MAXIMOS = 6\n\n\ndef elegir_palabra(lista):\n    return random.choice(lista)\n\n\ndef mostrar_palabra(palabra, acertadas):\n    resultado = ''\n    for letra in palabra:\n        resultado += letra + ' ' if letra in acertadas else '_ '\n    return resultado.strip()\n\n\ndef jugar():\n    random.seed(0)\n    palabra = elegir_palabra(PALABRAS)\n    acertadas = []\n    fallos = 0\n    while fallos < FALLOS_MAXIMOS:\n        print('Palabra:', mostrar_palabra(palabra, acertadas))\n        letra = input('Escribe una letra: ').lower()\n        if letra in acertadas:\n            print('Ya probaste esa letra.')\n            continue\n        if letra in palabra:\n            acertadas.append(letra)\n            print('¡Bien! Esa letra esta en la palabra.')\n        else:\n            fallos += 1\n            print('Esa letra no esta. Fallos:', fallos)\n        if len(acertadas) == len(set(palabra)):\n            print('¡Ganaste! La palabra era:', palabra)\n            return\n    print('Perdiste. La palabra era:', palabra)\n\n\nif __name__ == '__main__':\n    jugar()", validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def ", descripcion: "Debes definir funciones con def" }, { tipo: "contiene_codigo", valor: "random", descripcion: "Debes elegir la palabra con el modulo random" }, { tipo: "usa_funcion", valor: "len", descripcion: "Debes usar len() para controlar el final" }] }
+        { id: "m4l20e5", tipo: "proyecto", orden: 5, enunciado: "Proyecto final del modulo: el Ahorcado completo. La maquina elige una palabra al azar de una lista, el jugador propone letras con input() y gana si completa la palabra antes de 6 fallos. Divide el juego en al menos tres funciones y protege el arranque con el guard.", concepto: "proyecto_ahorcado", xp: 3, dificultad: 3, pista: "Empieza importando random, define las funciones y deja el bucle principal para el final.", explicacionCorrecta: "¡Increible! Has construido el Ahorcado combinando funciones, listas, azar, bucles y el guard: un proyecto de verdad.", explicacionIncorrecta: "Comprueba que existan al menos tres funciones con def, que el bucle termine a los 6 fallos o al acertar la palabra, y que uses random y len.", requisitos: ["Elige la palabra con random.choice a partir de una lista y fija random.seed(0) para poder probar siempre lo mismo.", "Pide letras con input() dentro de un bucle con condicion de salida.", "Muestra la palabra con guiones bajos en las letras no acertadas.", "Lleva la cuenta de fallos y termina al llegar a 6 o al acertar la palabra.", "Define al menos tres funciones con def.", "Usa len() y anuncia la victoria y la derrota con mensajes distintos."], rubrica: ["El juego se ejecuta sin errores y no se queda en un bucle infinito.", "Cada funcion tiene una responsabilidad clara y un nombre descriptivo.", "La palabra oculta se muestra correctamente en cada turno.", "El final distingue claramente si el jugador gano o perdio."], codigoInicial: "# Proyecto: Ahorcado\nimport random\n\n# Lista de palabras y maximo de fallos\n# 1) funcion para elegir palabra\n# 2) funcion para mostrar la palabra oculta\n# 3) funcion jugar con el bucle principal\n# 4) guard if __name__ == '__main__'\n", entradasSimuladas: ["a", "e", "i", "o", "u", "c", "s", "p", "t", "n", "r", "l", "d", "m", "b", "g", "v", "y", "f", "h", "z", "x", "j", "k", "q", "w"], solucionComentada: "import random\n\nPALABRAS = ['python', 'casa', 'perro', 'escuela', 'juego', 'raton']\nFALLOS_MAXIMOS = 6\n\n\ndef elegir_palabra(lista):\n    return random.choice(lista)\n\n\ndef mostrar_palabra(palabra, acertadas):\n    resultado = ''\n    for letra in palabra:\n        resultado += letra + ' ' if letra in acertadas else '_ '\n    return resultado.strip()\n\n\ndef jugar():\n    random.seed(0)\n    palabra = elegir_palabra(PALABRAS)\n    acertadas = []\n    fallos = 0\n    while fallos < FALLOS_MAXIMOS:\n        print('Palabra:', mostrar_palabra(palabra, acertadas))\n        letra = input('Escribe una letra: ').lower()\n        if letra in acertadas:\n            print('Ya probaste esa letra.')\n            continue\n        if letra in palabra:\n            acertadas.append(letra)\n            print('¡Bien! Esa letra esta en la palabra.')\n        else:\n            fallos += 1\n            print('Esa letra no esta. Fallos:', fallos)\n        if len(acertadas) == len(set(palabra)):\n            print('¡Ganaste! La palabra era:', palabra)\n            return\n    print('Perdiste. La palabra era:', palabra)\n\n\nif __name__ == '__main__':\n    jugar()", validaciones: [
+        { tipo: "regex_salida", valor: "_", descripcion: "Tienes que mostrar la palabra oculta con guiones bajos" },{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def ", descripcion: "Debes definir funciones con def" }, { tipo: "contiene_codigo", valor: "random", descripcion: "Debes elegir la palabra con el modulo random" }, { tipo: "usa_funcion", valor: "len", descripcion: "Debes usar len() para controlar el final" }] }
       ]
     }
   ],
@@ -16595,6 +16644,7 @@ const CURSO = {
           ],
           codigoInicial: "# Mini proyecto: la clase Mascota y tu lista de tres mascotas\n\n",
           validaciones: [
+        { tipo: "salida_igual", valor: "Luna (perro, 4 años)\nMichi (gato, 2 años)\nNemo (pez, 1 años)\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { "tipo": "sin_error", "descripcion": "El codigo debe ejecutarse sin errores" },
             { "tipo": "contiene_codigo", "valor": "class Mascota", "descripcion": "Debes definir la clase Mascota" },
             { "tipo": "contiene_codigo", "valor": "for ", "descripcion": "Debes recorrer la lista con un bucle for" },
@@ -17334,6 +17384,7 @@ const CURSO = {
           ],
           codigoInicial: "# Mini proyecto: inventario con validacion\n\n",
           validaciones: [
+        { tipo: "salida_igual", valor: "Stock no valido, se usara 0\n0\nNo hay stock suficiente\nFalse\nNo hay stock suficiente\nFalse\n0\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { "tipo": "sin_error", "descripcion": "El codigo debe ejecutarse sin errores" },
             { "tipo": "contiene_codigo", "valor": "def vender", "descripcion": "Debes definir el metodo vender" },
             { "tipo": "contiene_codigo", "valor": "if ", "descripcion": "Debes validar con condiciones if" },
@@ -18066,6 +18117,7 @@ const CURSO = {
           ],
           codigoInicial: "# Mini proyecto: zoologico polimorfico\n\n",
           validaciones: [
+        { tipo: "salida_igual", valor: "Soy Rex -> Guau\nSoy Michi -> Miau\nSoy Donald -> Cuac (...)\nEl pato puede volar: True\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { "tipo": "sin_error", "descripcion": "El codigo debe ejecutarse sin errores" },
             { "tipo": "contiene_codigo", "valor": "class Pato(Animal)", "descripcion": "Pato debe heredar de Animal" },
             { "tipo": "contiene_codigo", "valor": "@property", "descripcion": "Debes usar @property para puede_volar" },
@@ -18821,6 +18873,7 @@ const CURSO = {
           ],
           codigoInicial: "# PROYECTO: Gestor de Biblioteca\n# Escribe aqui tus clases Libro, LibroDigital, Usuario y Biblioteca\n\n",
           validaciones: [
+            { tipo: "salida_longitud_min", valor: 80, descripcion: "El informe de la biblioteca tiene que mostrar el catálogo, no una línea suelta" },
             { "tipo": "sin_error", "descripcion": "El codigo debe ejecutarse sin errores" },
             { "tipo": "contiene_codigo", "valor": "class LibroDigital", "descripcion": "Debes crear la subclase LibroDigital" },
             { "tipo": "contiene_codigo", "valor": "class Biblioteca", "descripcion": "Debes crear la clase Biblioteca" },
@@ -19405,10 +19458,10 @@ const CURSO = {
           salidaEsperada: "15",
           entradasSimuladas: [],
           validaciones: [
+            { tipo: "salida_igual", valor: "15\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "csv.writer", descripcion: "Debes usar csv.writer para crear el archivo" },
-            { tipo: "contiene_codigo", valor: "csv.reader", descripcion: "Debes leer el archivo con csv.reader" },
-            { tipo: "usa_funcion", valor: "sum", descripcion: "Debes sumar las notas con sum()" }
+            { tipo: "contiene_codigo", valor: "csv.reader", descripcion: "Debes leer el archivo con csv.reader" }
           ],
           pista: "Escribe el CSV con writerow, luego recórrelo con csv.reader, convierte fila[1] con int() y acumula las notas para sumarlas.",
           explicacionCorrecta: "Escribiste el archivo con writerow y lo leíste con reader, convirtiendo el texto a número. Ese paso de conversión es clave porque el CSV solo guarda texto.",
@@ -19861,6 +19914,7 @@ const CURSO = {
           salidaEsperada: "0",
           entradasSimuladas: ["hola"],
           validaciones: [
+        { tipo: "salida_igual", valor: "Escribe un número: hola\nDato no válido\n0\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "try:", descripcion: "Debes usar un bloque try" },
             { tipo: "contiene_codigo", valor: "except", descripcion: "Debes capturar el error con except" },
@@ -20465,6 +20519,7 @@ const CURSO = {
           ],
           codigoInicial: "# 1) Define ContrasenaDebil\n# 2) Define validar(contrasena)\n# 3) Prueba con 'abc' usando try/except\n",
           validaciones: [
+        { tipo: "salida_igual", valor: "Error: La contraseña es demasiado corta\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "class ContrasenaDebil(Exception)", descripcion: "Debes definir la excepción propia" },
             { tipo: "usa_funcion", valor: "len", descripcion: "Debes comprobar la longitud con len()" },
