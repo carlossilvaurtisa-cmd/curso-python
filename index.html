@@ -27365,6 +27365,7 @@ var AccesoUI = {
     AccesoUI.cambiarModo('entrar');
     AccesoUI.actualizarPuntos();
     Router.mostrar('acceso');
+    AccesoUI.pintarBadge();
     if (mensaje) AccesoUI.mensaje(tipo || 'info', mensaje);
   },
 
@@ -27516,6 +27517,12 @@ var AccesoUI = {
 
     /* Sin nube configurada y sin sesión no hay nada que mostrar */
     if (!Cuenta.configurada() && !Cuenta.haySesion()) {
+      badge.hidden = true;
+      return;
+    }
+    /* En la propia pantalla de acceso el indicador sobra (dice "Sin cuenta"
+       justo cuando estás entrando) */
+    if (Router.pantallaActual === 'acceso') {
       badge.hidden = true;
       return;
     }
