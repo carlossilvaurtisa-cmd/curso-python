@@ -27182,9 +27182,8 @@ var Sync = {
     }
 
     var fila = bajada.fila;
-    var localTieneDatos = !!(State.datos && (State.datos.progreso || {}).xpTotal !== undefined);
 
-    /* 1) No hay nada en la nube todavía: subimos lo nuestro */
+    /* 1) La nube está vacía: es la primera vez. Subimos lo que hay aquí. */
     if (!fila) {
       var primera = await Cuenta.subirProgreso(State.datos, Tutor.datos ? Tutor.datos.conversaciones : {});
       Sync.sincronizando = false;
@@ -27195,33 +27194,45 @@ var Sync = {
       return;
     }
 
+    /* 2) No ha cambiado nada aquí ni en la nube: no hay nada que hacer */
     var remotoCuando = Date.parse(fila.actualizado_en || '') || 0;
-    var cambioOtroDispositivo = remotoCuando > (Cuenta.ultimaSync || 0);
-
-    /* 2) El alumno no ha tocado nada aquí: bajamos lo de la nube */
-    if (!Cuenta.sucio && !forzar) {
-      Sync.aplicarDeLaNube(fila);
+    var nadaNuevo = !Cuenta.sucio && remotoCuando <= (Cuenta.ultimaSync || 0);
+    if (nadaNuevo && !forzar) {
       Sync.sincronizando = false;
       Sync.estado = 'ok';
       AccesoUI.pintarBadge();
       return;
     }
 
-    /* 3) Los dos lados cambiaron: hay que preguntar */
-    if (Cuenta.sucio && cambioOtroDispositivo) {
-      Sync.sincronizando = false;
-      Sync.estado = 'conflicto';
-      AccesoUI.pintarBadge();
-      Sync.preguntarConflicto(fila);
-      return;
-    }
+    /* 3) UNIÓN: no se pisa NADA de ningún lado. Lo de este dispositivo y lo
+          de la nube se juntan, y el resultado se sube, con lo que pasa a ser
+          la versión buena en los dos sitios. Así, quien haya jugado sin
+          cuenta no pierde nada al entrar, y quien tenga progreso en otro
+          dispositivo tampoco. */
+    var union = Sync.unirProgresos(State.datos, fila.datos);
 
-    /* 4) Solo cambió aquí: subimos */
+    Sync._aplicando = true;   // que este guardado no cuente como cambio del alumno
+    State.reemplazar(Store.migrar(union.datos));
+    if (Tutor.datos) {
+      Tutor.datos.conversaciones = Sync.unirConversaciones(Tutor.datos.conversaciones, fila.tutor);
+      Tutor.guardar();
+    }
+    Sync._aplicando = false;
+
     var subida = await Cuenta.subirProgreso(State.datos, Tutor.datos ? Tutor.datos.conversaciones : {});
     Sync.sincronizando = false;
     Sync.estado = subida.ok ? 'ok' : 'error';
     Sync.ultimoMensaje = subida.ok ? 'Sincronizado.' : subida.mensaje;
     AccesoUI.pintarBadge();
+    Router.actualizarHud();
+
+    /* Si estábamos en el mapa, lo repintamos con los datos unidos */
+    if (Router.pantallaActual === 'mapa') Vistas.renderMapa();
+
+    /* Solo avisamos si la unión ha aportado algo de verdad */
+    if (subida.ok && (union.resumen.trajoDeLaNube || union.resumen.aportamosALaNube)) {
+      Sync.mostrarResumenUnion(union.resumen);
+    }
   },
 
   /* Sustituye el progreso local por el de la nube */
@@ -27242,18 +27253,210 @@ var Sync = {
     Router.actualizarHud();
   },
 
-  /* Resume un progreso en una frase, para que el alumno pueda comparar */
-  resumir: function (datos, cuando) {
-    var xp = 0, lecciones = 0;
-    if (datos && datos.progreso) {
-      xp = datos.progreso.xpTotal || 0;
-      lecciones = Object.keys(datos.progreso.leccionesCompletadas || {}).length;
-    }
-    return {
-      xp: xp,
-      lecciones: lecciones,
-      cuando: cuando ? Sync.haceCuanto(cuando) : 'ahora mismo'
+  /* ============================================================
+     UNIÓN DE PROGRESOS
+     Regla de oro: NUNCA se pierde nada. Lo que está en un lado y no en el
+     otro se añade; lo que está en los dos se queda con la mejor marca.
+     Cuando hay duda (XP, monedas), se coge el MAYOR de los dos en lugar de
+     sumarlos, para no inventar progreso que el alumno no ha hecho.
+     ============================================================ */
+
+  /* Cuenta las lecciones de un progreso */
+  _contarLecciones: function (datos) {
+    if (!datos || !datos.progreso || !datos.progreso.leccionesCompletadas) return 0;
+    return Object.keys(datos.progreso.leccionesCompletadas).length;
+  },
+
+  /* Une dos listas de ids sin repetir */
+  _unirListas: function (a, b) {
+    var salida = [];
+    (a || []).concat(b || []).forEach(function (elemento) {
+      if (elemento !== undefined && elemento !== null && salida.indexOf(elemento) === -1) {
+        salida.push(elemento);
+      }
+    });
+    return salida;
+  },
+
+  /* Une dos mapas de objetos: si la clave está en los dos, decide "mejor" */
+  _unirMapas: function (a, b, mejor) {
+    var salida = {};
+    var A = a || {}, B = b || {};
+    Object.keys(A).forEach(function (clave) { salida[clave] = A[clave]; });
+    Object.keys(B).forEach(function (clave) {
+      salida[clave] = (salida[clave] === undefined) ? B[clave] : mejor(salida[clave], B[clave]);
+    });
+    return salida;
+  },
+
+  /* Une dos mapas de números quedándose con el mayor de cada clave */
+  _unirNumeros: function (a, b) {
+    var salida = {};
+    var A = a || {}, B = b || {};
+    Object.keys(A).forEach(function (clave) { salida[clave] = A[clave]; });
+    Object.keys(B).forEach(function (clave) {
+      salida[clave] = Math.max(salida[clave] || 0, B[clave] || 0);
+    });
+    return salida;
+  },
+
+  /* Une los dos progresos y devuelve el resultado más un resumen legible */
+  unirProgresos: function (local, remoto) {
+    var L = local || {};
+    var R = remoto || {};
+    var lp = L.progreso || {};
+    var rp = R.progreso || {};
+
+    /* Partimos de lo de este dispositivo (así se conservan sus ajustes) */
+    var union = JSON.parse(JSON.stringify(L));
+    union.progreso = union.progreso || {};
+
+    /* --- Lecciones: unión, y en las repetidas gana la mejor marca --- */
+    union.progreso.leccionesCompletadas = Sync._unirMapas(
+      lp.leccionesCompletadas, rp.leccionesCompletadas,
+      function (a, b) {
+        if ((a.estrellas || 0) !== (b.estrellas || 0)) return (a.estrellas || 0) > (b.estrellas || 0) ? a : b;
+        if ((a.porcentaje || 0) !== (b.porcentaje || 0)) return (a.porcentaje || 0) > (b.porcentaje || 0) ? a : b;
+        return a;
+      });
+
+    /* --- Insignias y módulos: unión de ids --- */
+    union.progreso.insignias = Sync._unirListas(lp.insignias, rp.insignias);
+    union.progreso.modulosCompletados = Sync._unirListas(lp.modulosCompletados, rp.modulosCompletados);
+
+    /* --- Jefes vencidos: unión, con el mejor intento de cada uno --- */
+    union.progreso.bossesCompletados = Sync._unirMapas(
+      lp.bossesCompletados, rp.bossesCompletados,
+      function (a, b) { return (a.aciertos || 0) >= (b.aciertos || 0) ? a : b; });
+
+    /* --- Conceptos (alimentan el Repaso): el mayor de cada uno --- */
+    union.progreso.erroresPorConcepto = Sync._unirNumeros(lp.erroresPorConcepto, rp.erroresPorConcepto);
+    union.progreso.aciertosPorConcepto = Sync._unirNumeros(lp.aciertosPorConcepto, rp.aciertosPorConcepto);
+
+    /* --- Historial diario y repasos programados --- */
+    union.progreso.historialXp = Sync._unirNumeros(lp.historialXp, rp.historialXp);
+    union.progreso.repasoVencido = Sync._unirMapas(lp.repasoVencido, rp.repasoVencido,
+      function (a, b) { return (a.veces || 0) >= (b.veces || 0) ? a : b; });
+
+    /* --- Cosas compradas: el mayor (no se suman para no duplicar) --- */
+    union.progreso.articulosComprados = Sync._unirNumeros(lp.articulosComprados, rp.articulosComprados);
+    union.progreso.pistasExtra = Math.max(lp.pistasExtra || 0, rp.pistasExtra || 0);
+    union.progreso.saltosDisponibles = Math.max(lp.saltosDisponibles || 0, rp.saltosDisponibles || 0);
+    union.progreso.avatarDorado = !!(lp.avatarDorado || rp.avatarDorado);
+    union.progreso.temaOscuroComprado = !!(lp.temaOscuroComprado || rp.temaOscuroComprado);
+    union.progreso.dobleXpHasta = Math.max(lp.dobleXpHasta || 0, rp.dobleXpHasta || 0);
+    union.progreso.corazonesInfinitosHasta = Math.max(lp.corazonesInfinitosHasta || 0, rp.corazonesInfinitosHasta || 0);
+
+    /* --- Números sueltos: el mayor de los dos --- */
+    union.progreso.xpTotal = Math.max(lp.xpTotal || 0, rp.xpTotal || 0);
+    union.progreso.monedas = Math.max(lp.monedas || 0, rp.monedas || 0);
+    union.progreso.rachaActual = Math.max(lp.rachaActual || 0, rp.rachaActual || 0);
+    union.progreso.rachaMaxima = Math.max(lp.rachaMaxima || 0, rp.rachaMaxima || 0);
+    union.progreso.congeladoresRacha = Math.max(lp.congeladoresRacha || 0, rp.congeladoresRacha || 0);
+    union.progreso.nivel = Game.calcularNivel(union.progreso.xpTotal);
+
+    /* --- Estadísticas: el mayor de cada contador --- */
+    var le = lp.estadisticas || {};
+    var re = rp.estadisticas || {};
+    union.progreso.estadisticas = {
+      tiempoTotalMin: Math.max(le.tiempoTotalMin || 0, re.tiempoTotalMin || 0),
+      ejerciciosResueltos: Math.max(le.ejerciciosResueltos || 0, re.ejerciciosResueltos || 0),
+      ejerciciosFallados: Math.max(le.ejerciciosFallados || 0, re.ejerciciosFallados || 0),
+      diasEstudiados: Math.max(le.diasEstudiados || 0, re.diasEstudiados || 0)
     };
+
+    /* --- Corazones y contador de hoy: mandan los de este dispositivo,
+           porque es el que sabe qué hora es ahora mismo --- */
+    if (lp.corazones === undefined) union.progreso.corazones = rp.corazones;
+    if (lp.ultimaRecargaCorazones === undefined) union.progreso.ultimaRecargaCorazones = rp.ultimaRecargaCorazones;
+    if (!lp.fechaXpHoy) {
+      union.progreso.fechaXpHoy = rp.fechaXpHoy;
+      union.progreso.xpHoy = rp.xpHoy;
+    }
+
+    /* --- Si aquí no hay nombre (dispositivo nuevo), usamos el de la nube --- */
+    if (!(L.perfil && L.perfil.nombre) && R.perfil) union.perfil = R.perfil;
+
+    /* --- La fecha de actividad, la más reciente --- */
+    if (R.ultimaActividad && (!L.ultimaActividad || R.ultimaActividad > L.ultimaActividad)) {
+      union.ultimaActividad = R.ultimaActividad;
+    }
+
+    /* --- Ajustes de este dispositivo, pero "iniciado" se hereda --- */
+    union.ajustes = L.ajustes || (R.ajustes ? JSON.parse(JSON.stringify(R.ajustes)) : {});
+    if (R.ajustes && R.ajustes.iniciado) union.ajustes.iniciado = true;
+
+    /* --- Resumen para contárselo al alumno --- */
+    var resumen = {
+      leccionesAqui: Sync._contarLecciones(L),
+      leccionesNube: Sync._contarLecciones(R),
+      leccionesTotal: Object.keys(union.progreso.leccionesCompletadas).length,
+      insignias: union.progreso.insignias.length,
+      jefes: Object.keys(union.progreso.bossesCompletados).length,
+      xp: union.progreso.xpTotal
+    };
+    resumen.trajoDeLaNube = resumen.leccionesTotal > resumen.leccionesAqui;
+    resumen.aportamosALaNube = resumen.leccionesTotal > resumen.leccionesNube;
+    return { datos: union, resumen: resumen };
+  },
+
+  /* Une dos historiales de conversación del tutor, sin duplicar mensajes */
+  unirConversaciones: function (a, b) {
+    var salida = {};
+    var claves = Object.keys(a || {}).concat(Object.keys(b || {}));
+    claves.forEach(function (clave) {
+      if (salida[clave]) return;
+      var suyos = (a || {})[clave] || [];
+      var nube = (b || {})[clave] || [];
+      var todos = suyos.concat(nube).sort(function (x, y) { return (x.ts || 0) - (y.ts || 0); });
+      var vistos = {};
+      var limpios = [];
+      todos.forEach(function (m) {
+        var firma = (m.ts || 0) + '|' + m.rol + '|' + String(m.texto || '').slice(0, 40);
+        if (vistos[firma]) return;
+        vistos[firma] = true;
+        limpios.push(m);
+      });
+      salida[clave] = limpios.slice(-Tutor.MAX_MENSAJES);
+    });
+    return salida;
+  },
+
+  /* Cuenta al alumno, con alegría, qué se ha unido */
+  mostrarResumenUnion: function (resumen) {
+    var cuerpo = Utils.crear('div');
+
+    cuerpo.appendChild(Utils.crear('p', null,
+      resumen.trajoDeLaNube && resumen.aportamosALaNube
+        ? 'He juntado tu progreso de este dispositivo con el de la nube. No se ha perdido nada.'
+        : resumen.trajoDeLaNube
+          ? 'He recuperado el progreso que tenías en la nube. Aquí faltaba algo y ya está completo.'
+          : 'He guardado en la nube el progreso que tenías en este dispositivo.'));
+
+    var datos = Utils.crear('div', 'cuenta-datos');
+    [
+      { valor: resumen.leccionesTotal, etiqueta: 'Lecciones' },
+      { valor: resumen.insignias, etiqueta: 'Insignias' },
+      { valor: resumen.jefes, etiqueta: 'Jefes' },
+      { valor: resumen.xp, etiqueta: 'XP' }
+    ].forEach(function (dato) {
+      var caja = Utils.crear('div', 'cuenta-dato');
+      caja.appendChild(Utils.crear('span', 'valor', String(dato.valor)));
+      caja.appendChild(Utils.crear('span', 'etiqueta', dato.etiqueta));
+      datos.appendChild(caja);
+    });
+    cuerpo.appendChild(datos);
+
+    if (resumen.leccionesAqui !== resumen.leccionesNube) {
+      cuerpo.appendChild(Utils.crear('p', 'texto-pequeno texto-suave',
+        'Este dispositivo tenía ' + resumen.leccionesAqui + ' lecciones y la nube ' +
+        resumen.leccionesNube + '. Ahora tienes las ' + resumen.leccionesTotal + ' que había entre los dos.'));
+    }
+
+    Plantillas.modal('Tu progreso está a salvo', cuerpo, [
+      { texto: '¡Genial!', clase: 'btn--primario' }
+    ]);
+    FX.confeti(30);
   },
 
   /* "hace 3 minutos" a partir de una marca de tiempo */
@@ -27265,47 +27468,6 @@ var Sync = {
     var horas = Math.round(minutos / 60);
     if (horas < 24) return 'hace ' + horas + ' h';
     return 'hace ' + Math.round(horas / 24) + ' días';
-  },
-
-  /* Pregunta al alumno con qué versión quiere quedarse */
-  preguntarConflicto: function (fila) {
-    var local = Sync.resumir(State.datos, 0);
-    var remoto = Sync.resumir(fila.datos, Date.parse(fila.actualizado_en || ''));
-
-    var cuerpo = Utils.crear('div');
-    cuerpo.appendChild(Utils.crear('p', null,
-      'Has jugado en dos sitios distintos y no quiero borrarte nada sin preguntar. ' +
-      '¿Con cuál te quedas?'));
-
-    var cajaLocal = Utils.crear('div', 'card mb-2');
-    cajaLocal.appendChild(Utils.crear('div', 'card__titulo', '📱 Este dispositivo'));
-    cajaLocal.appendChild(Utils.crear('div', 'card__sub',
-      local.lecciones + ' lecciones · ' + local.xp + ' XP · guardado ahora mismo'));
-    cuerpo.appendChild(cajaLocal);
-
-    var cajaRemoto = Utils.crear('div', 'card');
-    cajaRemoto.appendChild(Utils.crear('div', 'card__titulo', '☁️ La nube'));
-    cajaRemoto.appendChild(Utils.crear('div', 'card__sub',
-      remoto.lecciones + ' lecciones · ' + remoto.xp + ' XP · guardado ' + remoto.cuando));
-    cuerpo.appendChild(cajaRemoto);
-
-    Plantillas.modal('Tu progreso está en dos sitios', cuerpo, [
-      { texto: 'Quedarme con este dispositivo', clase: 'btn--primario', alPulsar: async function () {
-        var resultado = await Cuenta.subirProgreso(State.datos,
-          Tutor.datos ? Tutor.datos.conversaciones : {});
-        Sync.estado = resultado.ok ? 'ok' : 'error';
-        Sync.ultimoMensaje = resultado.ok ? 'Se guardó el de este dispositivo.' : resultado.mensaje;
-        AccesoUI.pintarBadge();
-        FX.toast(resultado.ok ? 'ok' : 'error', Sync.ultimoMensaje);
-      } },
-      { texto: 'Quedarme con el de la nube', clase: 'btn--fantasma', alPulsar: function () {
-        Sync.aplicarDeLaNube(fila);
-        Sync.estado = 'ok';
-        Vistas.renderMapa();
-        Router.ir('mapa');
-        FX.toast('ok', 'Progreso actualizado desde la nube');
-      } }
-    ]);
   }
 };
 
@@ -27339,7 +27501,9 @@ var AccesoUI = {
     'create policy "crear mi progreso" on public.pyquest_progreso',
     '  for insert with check (auth.uid() = id);',
     'create policy "actualizar mi progreso" on public.pyquest_progreso',
-    '  for update using (auth.uid() = id) with check (auth.uid() = id);'
+    '  for update using (auth.uid() = id) with check (auth.uid() = id);',
+    'create policy "borrar mi progreso" on public.pyquest_progreso',
+    '  for delete using (auth.uid() = id);'
   ].join('\n'),
 
   /* ---------- ARRANQUE ---------- */
