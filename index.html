@@ -23282,6 +23282,19 @@ var Vistas = {
       caja.appendChild(Vistas.diffDeSalida(opciones.diff.esperada, opciones.diff.obtenida));
     }
 
+    /* El alumno se ha atascado con código: le ofrecemos el tutor ahí mismo,
+       que ya sabe qué ha fallado, para que no tenga que explicarlo. */
+    if (opciones.pedirTutor) {
+      var botonTutor = Utils.crear('button', 'btn btn--morado btn--chico mt-2',
+        '🤖 Que el tutor me lo explique');
+      botonTutor.setAttribute('type', 'button');
+      botonTutor.addEventListener('click', function () {
+        TutorUI.abrir();
+        window.setTimeout(function () { TutorUI.accion('codigo'); }, 340);
+      });
+      caja.appendChild(botonTutor);
+    }
+
     /* Fallos de validación (ejercicios de código) */
     if (opciones.fallos && opciones.fallos.length) {
       var listaFallos = Utils.crear('ul', 'feedback__extra');
@@ -23982,6 +23995,17 @@ var Ejercicios = {
   emparejados: [],
   _temporizador: null,
   _erroresContados: [],
+  /* Lo que pasó en el último intento del alumno. El tutor lo lee para poder
+     explicar el motivo CONCRETO por el que no le avanza el ejercicio. */
+  ultimoIntento: null,
+
+  /* Guarda el resultado del último intento, con todo el detalle posible */
+  _recordarIntento: function (datos) {
+    var intento = datos || {};
+    intento.cuando = Date.now();
+    Ejercicios.ultimoIntento = intento;
+    return intento;
+  },
 
   /* ---------- ARRANQUE DE LA SESIÓN ---------- */
 
@@ -24160,6 +24184,7 @@ var Ejercicios = {
     Ejercicios.intentos = 0;
     Ejercicios.respuestaActual = { tipo: null, valor: null };
     Ejercicios.opcionesBarajadas = null;
+    Ejercicios.ultimoIntento = null;   // ejercicio nuevo: borrón y cuenta nueva
 
     Vistas.limpiarZonas();
     Vistas.ocultarFeedback();
@@ -24339,6 +24364,10 @@ var Ejercicios = {
            panel. No es un error del alumno, así que no se penaliza: se le
            explica cómo arreglarlo y puede reintentar sin coste. */
         if (resultado.errorTipo === 'EOFError') {
+          Ejercicios._recordarIntento({
+            ok: false, tipo: 'faltan-datos', codigo: codigo,
+            salida: resultado.salida || '', errorPython: resultado.error || ''
+          });
           Ejercicios._resolver(ejercicio, entrada, false, {
             suave: true,
             mensaje: 'Tu programa pidió más datos de los que hay en el panel ' +
@@ -24352,10 +24381,16 @@ var Ejercicios = {
         var mensaje = resultado.errorTipo === 'timeout'
           ? resultado.error
           : PyRunner.traducirError(resultado.error);
+        Ejercicios._recordarIntento({
+          ok: false, tipo: 'error', codigo: codigo,
+          salida: resultado.salida || '',
+          errorPython: resultado.error || ''
+        });
         Ejercicios._resolver(ejercicio, entrada, false, {
           respuestaCorrecta: '',
           mensaje: mensaje,
-          detalleTecnico: resultado.error || ''
+          detalleTecnico: resultado.error || '',
+          pedirTutor: true
         });
         return;
       }
@@ -24373,14 +24408,24 @@ var Ejercicios = {
           if (v.tipo === 'salida_igual' && v.valor) salidaEsperada = v.valor;
         });
 
+        Ejercicios._recordarIntento({
+          ok: false, tipo: 'validacion', codigo: codigo,
+          salida: resultado.salida || '',
+          esperado: salidaEsperada || null,
+          fallos: validacion.fallos,
+          salidaCoincide: !!(salidaEsperada &&
+            Utils.normalizarSalida(resultado.salida) === Utils.normalizarSalida(salidaEsperada))
+        });
         Ejercicios._resolver(ejercicio, entrada, false, {
           respuestaCorrecta: '',
           fallos: validacion.fallos,
-          diff: salidaEsperada ? { esperada: salidaEsperada, obtenida: resultado.salida } : null
+          diff: salidaEsperada ? { esperada: salidaEsperada, obtenida: resultado.salida } : null,
+          pedirTutor: true
         });
         return;
       }
 
+      Ejercicios._recordarIntento({ ok: true, tipo: 'ok', titulo: 'PASÓ el ejercicio', salida: resultado.salida || '' });
       Ejercicios._resolver(ejercicio, entrada, true, {
         respuestaCorrecta: '',
         salida: resultado.salida
@@ -24630,6 +24675,7 @@ var Ejercicios = {
     var area = Utils.$('editor-codigo');
     if (area) area.value = entrada.ejercicio.codigoInicial || '';
     PyRunner.limpiarConsola();
+    Ejercicios.ultimoIntento = null;   // al reiniciar el código, el intento anterior ya no vale
     Ejercicios.bloqueado = false;
     Vistas.ocultarFeedback();
     Vistas.textoBotonComprobar('COMPROBAR');
@@ -25619,6 +25665,11 @@ var Tutor = {
           codigoConError: ej.codigoConError || null,
           codigoInicial: ej.codigoInicial || null,
           requisitos: ej.requisitos || null,
+          /* Esto es lo que hace que el tutor pueda decir POR QUÉ no pasa:
+             necesita saber qué se le exige y qué salida se espera. */
+          salidaEsperada: ej.salidaEsperada || null,
+          validaciones: ej.validaciones || null,
+          pista: ej.pista || null,
           esDeRepaso: entrada.origen === 'repaso'
         };
       }
@@ -25669,6 +25720,13 @@ var Tutor = {
     '- Usa bloques de código con tres comillas invertidas y la etiqueta python cuando',
     '  muestres código, para que la app lo formatee bien.',
     '- Si el alumno domina mal un concepto, relaciónalo con los errores que ya ha cometido.',
+    '- SI EL EJERCICIO NO LE AVANZA, tu primera obligación es decirle el motivo EXACTO. En el',
+    '  contexto de abajo tienes su último intento: lo que imprimió su programa, lo que pide el',
+    '  enunciado y qué condición falló. Compara las dos salidas tú mismo y señálale la',
+    '  diferencia concreta (un "=" donde va un ":", una letra, una línea de más...). Prohibido',
+    '  responder con consejos genéricos cuando tienes el dato delante.',
+    '- Recuerda que su programa PUEDE estar bien escrito y aun así no pasar: el enunciado pide',
+    '  un formato exacto. Dilo con claridad y sin hacerle sentir que ha programado mal.',
     '- Sé breve: máximo 180 palabras, salvo que te pidan algo largo. Claridad antes que',
     '  exhaustividad. Si la pregunta no es de programación, responde en dos frases y',
     '  vuelve al curso con amabilidad.',
@@ -25762,6 +25820,20 @@ var Tutor = {
       if (ej.requisitos) lineas.push('  Requisitos del proyecto: ' + ej.requisitos.join('; '));
       if (ej.esDeRepaso) lineas.push('  (Este ejercicio es de repaso de una lección anterior)');
 
+      /* Qué se le exige y qué salida se espera. Sin esto el tutor no puede
+         decir por qué no pasa el ejercicio, solo dar consejos genéricos. */
+      if (ej.salidaEsperada) {
+        lineas.push('  Salida EXACTA que pide el enunciado: ' + JSON.stringify(ej.salidaEsperada));
+      }
+      if (ej.validaciones && ej.validaciones.length) {
+        lineas.push('  Condiciones para aprobar:');
+        ej.validaciones.forEach(function (v) {
+          lineas.push('    - ' + (v.descripcion || v.tipo) +
+            (v.valor !== undefined && v.tipo !== 'sin_error' ? ' [valor: ' +
+              JSON.stringify(v.valor) + ']' : ''));
+        });
+      }
+
       /* El código que el alumno tiene escrito, si es un ejercicio de código */
       var area = Utils.$('editor-codigo');
       if (area && (ej.tipo === 'codigo' || ej.tipo === 'proyecto')) {
@@ -25776,6 +25848,40 @@ var Tutor = {
           lineas.push('');
           lineas.push('ÚLTIMA SALIDA DE SU CONSOLA:');
           lineas.push(String(consola.textContent).slice(-600));
+        }
+
+        /* === SU ÚLTIMO INTENTO ===
+           Esto es lo que permite responder "por qué no me avanza": el tutor
+           ve qué imprimió el programa, qué se esperaba y qué condición falló. */
+        var intento = Ejercicios.ultimoIntento;
+        if (intento && (Date.now() - intento.cuando) < 15 * 60 * 1000) {
+          lineas.push('');
+          lineas.push('=== SU ÚLTIMO INTENTO (hace ' +
+            Math.max(1, Math.round((Date.now() - intento.cuando) / 1000)) + ' segundos) ===');
+
+          if (intento.ok) {
+            lineas.push('Le salió BIEN. Felicítalo y ofrécele el siguiente paso.');
+          } else if (intento.tipo === 'error') {
+            lineas.push('Su programa DIO UN ERROR. Este es el error de Python:');
+            lineas.push(String(intento.errorPython || '').slice(-800));
+          } else if (intento.tipo === 'faltan-datos') {
+            lineas.push('Su programa pidió más valores de los que hay en el panel de Datos de entrada.');
+          } else {
+            lineas.push('El programa SE EJECUTÓ SIN ERRORES, pero no pasó el ejercicio.');
+            if (intento.esperado) {
+              lineas.push('  Lo que imprimió su programa: ' + JSON.stringify(Utils.normalizarSalida(intento.salida)));
+              lineas.push('  Lo que pide el enunciado:    ' + JSON.stringify(Utils.normalizarSalida(intento.esperado)));
+              lineas.push('  (¿Coincide la salida? ' + (intento.salidaCoincide ? 'SÍ' :
+                'NO: la diferencia está en el texto de las líneas') + ')');
+            }
+            (intento.fallos || []).forEach(function (fallo) {
+              lineas.push('  No cumplió: ' + fallo.descripcion);
+            });
+          }
+
+          lineas.push('USA ESTOS DATOS para darle el motivo CONCRETO: compara tú las dos salidas y ' +
+            'señálale la diferencia exacta (una letra, dos puntos, un espacio, una línea de más). ' +
+            'No le escribas el programa entero: solo la línea que tiene que cambiar.');
         }
       }
     }
@@ -26389,8 +26495,9 @@ var TutorUI = {
           'este ejercicio sin darme la solución entera?');
         return;
       }
-      TutorUI.enviarTexto('Revisa mi código: dime primero qué hace, luego qué falla y por qué, ' +
-        'y la corrección de la línea mínima. No me lo reescribas entero.');
+      TutorUI.enviarTexto('Revisa mi ejercicio y dime POR QUÉ no me lo da por bueno. ' +
+        'Compara lo que imprime mi programa con lo que pide el enunciado, dime la diferencia ' +
+        'exacta y la línea concreta que tengo que cambiar. No me escribas el programa entero.');
       return;
     }
 
