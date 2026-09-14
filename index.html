@@ -8946,16 +8946,12 @@ const CURSO = {
     insigniaRecompensa: "maestro_variables",
     preguntas: [
       {
-        tipo: "multiple",
-        enunciado: "¿Cómo ejecuta Python las instrucciones de un script?",
-        opciones: [
-          "En orden, de arriba abajo, una detrás de otra",
-          "De abajo arriba, empezando por el final",
-          "Primero las que usan print y después el resto",
-          "Todas a la vez, sin ningún orden"
-        ],
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "x = 5\ny = 2\nprint(x - y, x + y)",
+        opciones: ["3 7", "7 3", "3, 7", "37"],
         respuestaCorrecta: 0,
-        explicacion: "Python lee el script de arriba abajo y ejecuta cada instrucción en ese orden. Por eso, si cambias el orden de las líneas, cambia el resultado."
+        explicacion: "print separa con un espacio cada valor que recibe: primero calcula x - y (3) y después x + y (7), en el mismo orden en que aparecen."
       },
       {
         tipo: "multiple",
@@ -8970,28 +8966,20 @@ const CURSO = {
         explicacion: "El # convierte el resto de la línea en un comentario que Python no ejecuta. Sirve para explicar el código sin afectar al resultado."
       },
       {
-        tipo: "multiple",
-        enunciado: "¿Cuál de estas cadenas hace que el texto salga en dos líneas distintas?",
-        opciones: [
-          "La que incluye \\n dentro de las comillas",
-          "La que lleva dos comas seguidas",
-          "La que usa sep='-' en el print",
-          "La que se escribe con mayúsculas"
-        ],
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "numero = '7'\nprint(numero + '3')",
+        opciones: ["73", "10", "'73'", "Da un error"],
         respuestaCorrecta: 0,
-        explicacion: "Dentro de una cadena, \\n ordena un salto de línea. Los otros elementos cambian la separación o el formato, pero no parten el texto en dos líneas."
+        explicacion: "Las comillas convierten 7 y 3 en texto, y el operador + pega cadenas en lugar de sumarlas, así que el resultado es 73."
       },
       {
-        tipo: "multiple",
-        enunciado: "En el print('2026', '03', '14', sep='-'), ¿qué se muestra en pantalla?",
-        opciones: [
-          "2026-03-14",
-          "2026 03 14",
-          "2026,03,14",
-          "20260314"
-        ],
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "palabra = 'casa'\nprint(len(palabra))",
+        opciones: ["4", "3", "5", "casa"],
         respuestaCorrecta: 0,
-        explicacion: "El parámetro sep decide qué se coloca entre los valores. Con sep='-' los tres datos quedan unidos por guiones."
+        explicacion: "len() cuenta cuántos caracteres tiene la cadena. 'casa' tiene cuatro letras, así que devuelve el número 4 y no la palabra."
       },
       {
         tipo: "multiple",
@@ -9006,16 +8994,12 @@ const CURSO = {
         explicacion: "input() siempre entrega texto. Si el dato se va a usar en cálculos, hay que convertirlo con int() o float()."
       },
       {
-        tipo: "multiple",
-        enunciado: "¿Qué muestra exactamente print(type(3.0))?",
-        opciones: [
-          "<class 'float'>",
-          "<class 'int'>",
-          "<class 'str'>",
-          "3.0"
-        ],
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "print(type(7 / 2))",
+        opciones: ["<class 'float'>", "<class 'int'>", "3.5", "3"],
         respuestaCorrecta: 0,
-        explicacion: "3.0 tiene parte decimal, así que es un float. type() devuelve el tipo con el formato <class 'float'>."
+        explicacion: "La división con / siempre produce un número decimal, aunque sea exacta. Por eso 7 / 2 es un float y type() lo muestra como <class 'float'>."
       },
       {
         tipo: "multiple",
@@ -12092,11 +12076,12 @@ const CURSO = {
         explicacion: "La cadena se detiene en la primera condición verdadera. Los elif posteriores ni se comprueban, por eso conviene ordenar las condiciones de más exigente a más amplia."
       },
       {
-        tipo: "multiple",
-        enunciado: "¿Qué números recorre el bucle for i in range(1, 5)?",
-        opciones: ["1, 2, 3, 4", "1, 2, 3, 4, 5", "0, 1, 2, 3, 4", "2, 3, 4, 5"],
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "for i in range(2, 7, 2):\n    print(i)",
+        opciones: ["2\n4\n6", "2\n4\n6\n8", "2\n3\n4\n5\n6", "3\n5\n7"],
         respuestaCorrecta: 0,
-        explicacion: "range(1, 5) empieza en 1 y se detiene antes del 5, así que recorre 1, 2, 3 y 4. El límite final nunca se incluye."
+        explicacion: "range(2, 7, 2) empieza en 2, avanza de dos en dos y se detiene antes del 7, así que imprime 2, 4 y 6."
       },
       {
         tipo: "multiple",
@@ -12111,16 +12096,12 @@ const CURSO = {
         explicacion: "break corta el bucle en el punto exacto en que se ejecuta. Saltar una vuelta es tarea de continue, y terminar el programa entero es otra cosa."
       },
       {
-        tipo: "multiple",
-        enunciado: "¿Qué hace continue dentro de un bucle?",
-        opciones: [
-          "Salta el resto de la vuelta actual y pasa a la siguiente",
-          "Abandona el bucle por completo",
-          "Detiene el programa con un error",
-          "Repite la misma vuelta desde el principio"
-        ],
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "for i in range(1, 6):\n    if i == 3:\n        continue\n    print(i)",
+        opciones: ["1\n2\n4\n5", "1\n2\n3\n4\n5", "1\n2", "4\n5"],
         respuestaCorrecta: 0,
-        explicacion: "continue ignora lo que queda por debajo en esa iteración, pero mantiene vivo el bucle. Es ideal para descartar datos que no nos interesan."
+        explicacion: "continue se salta el resto de la vuelta cuando i vale 3, pero el bucle continúa: por eso el 3 no se imprime y sí aparecen el 4 y el 5."
       },
       {
         tipo: "multiple",
@@ -12147,11 +12128,12 @@ const CURSO = {
         explicacion: "randint incluye los dos extremos, a diferencia de range(). Por eso sirve para simular un dado con caras del 1 al 6."
       },
       {
-        tipo: "multiple",
-        enunciado: "Tras ejecutar total = 0 y luego for n in range(1, 4): total = total + n, ¿cuánto vale total?",
-        opciones: ["6", "10", "3", "0"],
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "total = 0\nfor n in range(1, 5):\n    total = total + n\nprint(total)",
+        opciones: ["10", "6", "4", "15"],
         respuestaCorrecta: 0,
-        explicacion: "range(1, 4) recorre 1, 2 y 3, y su suma es 6. El 4 no entra porque es el límite excluido."
+        explicacion: "range(1, 5) recorre 1, 2, 3 y 4 (el 5 es el límite excluido) y el acumulador los suma todos: 1 + 2 + 3 + 4 es 10."
       },
       {
         tipo: "multiple",
@@ -12166,12 +12148,13 @@ const CURSO = {
         explicacion: "Si el texto no representa un número, int() detiene el programa. Validar con isdigit() antes de convertir evita ese error."
       },
       {
-        tipo: "multiple",
-        enunciado: "¿Cuántas líneas imprime el bloque interior de este código? for i in range(3): / for j in range(2): print(i, j)",
-        opciones: ["6", "5", "3", "2"],
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "for i in range(2):\n    for j in range(3):\n        print(i, j)",
+        opciones: ["0 0\n0 1\n0 2\n1 0\n1 1\n1 2", "0 0\n0 1\n1 0\n1 1\n2 0\n2 1", "0 0\n0 1\n1 0\n1 1", "0 0\n1 1\n2 2"],
         respuestaCorrecta: 0,
-        explicacion: "El bucle exterior da 3 vueltas y, en cada una, el interior imprime 2 líneas. Como los bucles anidados se multiplican, el total es 6."
-      }
+        explicacion: "El bucle exterior da 2 vueltas y, en cada una, el interior imprime 3 líneas. Por eso salen 6 líneas y la j siempre termina su recorrido completo antes de que i cambie."
+      },
     ]
   }
 },
@@ -15206,18 +15189,20 @@ const CURSO = {
         explicacion: "append() añade siempre un elemento al final de la lista."
       },
       {
-        tipo: "multiple",
-        enunciado: "¿Qué devuelve len(set([1, 2, 2, 3, 3, 3]))?",
-        opciones: ["1", "3", "6", "2"],
-        respuestaCorrecta: 1,
-        explicacion: "set() elimina los repetidos y deja los valores 1, 2 y 3, así que len devuelve 3."
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "numeros = [3, 1, 2]\nnumeros.sort()\nprint(numeros)",
+        opciones: ["[1, 2, 3]", "[3, 1, 2]", "1, 2, 3", "None"],
+        respuestaCorrecta: 0,
+        explicacion: "sort() ordena la lista en su sitio, modificándola directamente. Por eso al imprimir numeros aparece ya ordenada como [1, 2, 3]."
       },
       {
-        tipo: "multiple",
-        enunciado: "Con a = {1, 2, 3} y b = {2, 3, 4}, ¿qué devuelve a & b?",
-        opciones: ["{1, 2, 3, 4}", "{1, 4}", "{1, 2, 3}", "{2, 3}"],
-        respuestaCorrecta: 3,
-        explicacion: "La intersección & devuelve los elementos que están en los dos conjuntos: el 2 y el 3."
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "frutas = ['pera', 'uva']\nfrutas.append('kiwi')\nfrutas.remove('pera')\nprint(frutas)",
+        opciones: ["['uva', 'kiwi']", "['pera', 'uva', 'kiwi']", "['pera', 'uva']", "['kiwi', 'uva']"],
+        respuestaCorrecta: 0,
+        explicacion: "append() añade 'kiwi' al final y luego remove() borra 'pera'. La lista queda con los dos elementos que sobreviven, en el orden uva y kiwi."
       },
       {
         tipo: "multiple",
@@ -15234,11 +15219,12 @@ const CURSO = {
         explicacion: "El desempaquetado reparte en orden: el primer valor va a x y el segundo a y, así que y vale 7."
       },
       {
-        tipo: "multiple",
-        enunciado: "Con precios = {'pan': 2}, ¿qué devuelve precios.get('leche', 0)?",
-        opciones: ["None", "Un KeyError", "'leche'", "0"],
-        respuestaCorrecta: 3,
-        explicacion: "get() devuelve el valor por defecto indicado, en este caso 0, cuando la clave no existe."
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "notas = {'ana': 8}\nprint(notas.get('luis', 0))",
+        opciones: ["0", "None", "8", "Da un KeyError"],
+        respuestaCorrecta: 0,
+        explicacion: "La clave 'luis' no existe, así que get() devuelve el valor por defecto que se le indica, el 0, en lugar de provocar un error."
       },
       {
         tipo: "multiple",
@@ -15248,11 +15234,12 @@ const CURSO = {
         explicacion: "items() entrega cada par completo, ideal para recorrer con for clave, valor in diccionario.items()."
       },
       {
-        tipo: "multiple",
-        enunciado: "¿Qué crea la expresión [n * 2 for n in [1, 2, 3] if n > 1]?",
-        opciones: ["[2, 3]", "[4, 6]", "[2, 4, 6]", "[1, 2, 3]"],
-        respuestaCorrecta: 1,
-        explicacion: "El filtro deja pasar el 2 y el 3, y a cada uno le aplica la multiplicación por 2, así que el resultado es [4, 6]."
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "numeros = [1, 2, 3]\ndobles = [n * 2 for n in numeros if n > 1]\nprint(dobles)",
+        opciones: ["[4, 6]", "[2, 4, 6]", "[2, 3]", "[6, 4]"],
+        respuestaCorrecta: 0,
+        explicacion: "El filtro n > 1 descarta el 1 y deja pasar el 2 y el 3; a cada uno se le aplica n * 2, así que la lista resultante es [4, 6]."
       }
     ]
   }
@@ -15890,10 +15877,38 @@ const CURSO = {
     insigniaRecompensa: "arquitecto_funciones",
     preguntas: [
       { tipo: "multiple", enunciado: "¿Que palabra clave define una funcion en Python?", opciones: ["def", "function", "func", "define"], respuestaCorrecta: 0, explicacion: "def es la unica palabra clave de Python que define funciones; function y func pertenecen a otros lenguajes." },
-      { tipo: "multiple", enunciado: "Una funcion no tiene ninguna instruccion return. ¿Que devuelve?", opciones: ["None", "0", "Una cadena vacia", "Un error de sintaxis"], respuestaCorrecta: 0, explicacion: "En Python, toda funcion que no devuelve algo de forma explicita devuelve None, aunque por dentro use print." },
-      { tipo: "multiple", enunciado: "¿Cual de estas cabeceras con parametros es valida en Python?", opciones: ["def f(a, b=2):", "def f(a=1, b):", "def f(a=1, b=2, c):", "def f(=1, b):"], respuestaCorrecta: 0, explicacion: "Los parametros obligatorios van primero y los que tienen valor por defecto, despues. Por eso def f(a, b=2) es la unica valida." },
-      { tipo: "multiple", enunciado: "Dentro de una funcion creas la variable x. ¿Donde existe esa variable?", opciones: ["Solo dentro de la funcion", "En todo el programa", "En el modulo math", "Dentro y fuera de la funcion"], respuestaCorrecta: 0, explicacion: "Las variables creadas dentro de una funcion son locales: nacen y mueren con ella, y fuera se produce NameError." },
-      { tipo: "multiple", enunciado: "¿Que recoge el parametro **kwargs?", opciones: ["Un diccionario con los argumentos con nombre", "Una tupla con los argumentos posicionales", "Siempre el primer argumento", "Una lista de numeros"], respuestaCorrecta: 0, explicacion: "**kwargs guarda los argumentos con nombre como pares clave-valor, es decir, en un diccionario. *args recoge los posicionales en una tupla." },
+      {
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "def saludar():\n    print('Hola')\nresultado = saludar()\nprint(resultado)",
+        opciones: ["Hola\nNone", "Hola", "None\nHola", "Hola\nHola"],
+        respuestaCorrecta: 0,
+        explicacion: "La función imprime 'Hola' al ejecutarse, pero como no tiene return devuelve None. Por eso primero sale Hola y después None."
+      },
+      {
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "def saludar(nombre, saludo='Hola'):\n    print(saludo, nombre)\nsaludar('Ana')",
+        opciones: ["Hola Ana", "Ana Hola", "Hola nombre", "Hola"],
+        respuestaCorrecta: 0,
+        explicacion: "Al no pasar el segundo argumento, saludo toma su valor por defecto 'Hola'. print escribe primero el saludo y luego el nombre, separados por un espacio."
+      },
+      {
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "x = 10\ndef cambiar():\n    x = 3\ncambiar()\nprint(x)",
+        opciones: ["10", "3", "13", "Da un error"],
+        respuestaCorrecta: 0,
+        explicacion: "La x que se asigna dentro de la función es local y no toca la x global. Como no hay return ni global, fuera del bloque x sigue valiendo 10."
+      },
+      {
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "def suma(*numeros):\n    total = 0\n    for n in numeros:\n        total = total + n\n    return total\nprint(suma(1, 2, 3))",
+        opciones: ["6", "123", "3", "Da un error"],
+        respuestaCorrecta: 0,
+        explicacion: "*numeros recoge los tres argumentos en una tupla y el bucle los acumula: 1 + 2 + 3 es 6, que return entrega para poder imprimirlo."
+      },
       { tipo: "multiple", enunciado: "Una funcion externa quiere devolver la funcion interna multiplicar. ¿Que debe escribir?", opciones: ["return multiplicar", "return multiplicar()", "print(multiplicar)", "multiplicar = return"], respuestaCorrecta: 0, explicacion: "return multiplicar entrega la funcion para usarla despues. Con parentesis (return multiplicar()) la ejecutaria y devolveria su resultado, no la funcion." },
       { tipo: "multiple", enunciado: "¿Cual de estas expresiones lambda es valida?", opciones: ["doble = lambda x: x * 2", "lambda x: return x * 2", "doble = lambda x { x * 2 }", "lambda x: x * 2 = doble"], respuestaCorrecta: 0, explicacion: "Una lambda lleva parametros, dos puntos y una unica expresion que ya devuelve sola; no usa return ni llaves." },
       { tipo: "multiple", enunciado: "¿Que diferencia hay entre import math y from math import sqrt?", opciones: ["from math import sqrt trae solo esa funcion y se usa sin el prefijo math", "import math trae unicamente sqrt", "Las dos son exactamente iguales", "from math import sqrt importa el modulo entero"], respuestaCorrecta: 0, explicacion: "import math trae el modulo completo (y hay que usar math.sqrt); from math import sqrt trae solo la funcion y se llama directamente." },
@@ -18923,16 +18938,12 @@ const CURSO = {
         explicacion: "La clase es el molde y el objeto es la pieza concreta que sale de el. Por eso de una misma clase pueden nacer muchisimos objetos distintos."
       },
       {
-        tipo: "multiple",
-        enunciado: "Tienes class Cuenta con def __init__(self, titular). ¿Que ocurre exactamente al ejecutar c = Cuenta('Ana')?",
-        opciones: [
-          "Se crea el objeto y se ejecuta __init__ colocando 'Ana' en self.titular.",
-          "Se ejecuta __init__ y el objeto se crea en la linea siguiente.",
-          "Python espera a que llames manualmente a c.__init__().",
-          "Se llama a __str__ para mostrar el objeto por pantalla."
-        ],
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "class Perro:\n    def __init__(self, nombre):\n        self.nombre = nombre\na = Perro('Rex')\nb = Perro('Luna')\nprint(a.nombre, b.nombre)",
+        opciones: ["Rex Luna", "Luna Rex", "Rex Rex", "nombre nombre"],
         respuestaCorrecta: 0,
-        explicacion: "El constructor se dispara solo al crear el objeto. En cuanto Python construye la instancia, llama a __init__ con los argumentos que le pasaste."
+        explicacion: "Cada llamada al constructor crea un objeto distinto con su propio atributo nombre. Por eso a guarda 'Rex' y b guarda 'Luna', y print los muestra en ese orden."
       },
       {
         tipo: "multiple",
@@ -18947,28 +18958,20 @@ const CURSO = {
         explicacion: "self es el propio objeto, como el 'mi' cuando hablas de tus cosas. Por eso self.saldo y self.nombre apuntan a los datos de ese objeto y no a los de otro."
       },
       {
-        tipo: "multiple",
-        enunciado: "Quieres que print(libro) muestre el texto 'El Quijote de Cervantes'. ¿Que defines en la clase?",
-        opciones: [
-          "El metodo __str__ devolviendo ese texto.",
-          "Un atributo llamado print con ese texto.",
-          "El metodo __init__ que imprima el texto al crear el objeto.",
-          "Una variable global con el texto y usarla desde el programa principal."
-        ],
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "class Libro:\n    def __init__(self, titulo):\n        self.titulo = titulo\n    def __str__(self):\n        return 'Libro: ' + self.titulo\nprint(Libro('Dune'))",
+        opciones: ["Libro: Dune", "Dune", "Libro: titulo", "None"],
         respuestaCorrecta: 0,
-        explicacion: "__str__ decide como se convierte el objeto en texto al imprimirlo. Debe devolver la cadena con return, nunca imprimirla por dentro."
+        explicacion: "print() convierte el objeto en texto llamando a __str__, que devuelve 'Libro: ' unido al título. Por eso aparece la etiqueta delante de Dune."
       },
       {
-        tipo: "multiple",
-        enunciado: "En una clase tienes total = 0 en el cuerpo y self.nombre en el constructor. ¿Que afirmacion es correcta?",
-        opciones: [
-          "total lo comparten todos los objetos y nombre es propio de cada uno.",
-          "total es propio de cada objeto y nombre lo comparten todos.",
-          "Los dos son propios de cada objeto.",
-          "Los dos los comparten todos los objetos de la clase."
-        ],
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "class Perro:\n    patas = 4\n    def __init__(self, nombre):\n        self.nombre = nombre\na = Perro('Rex')\nprint(a.patas, a.nombre)",
+        opciones: ["4 Rex", "4 nombre", "patas Rex", "Rex 4"],
         respuestaCorrecta: 0,
-        explicacion: "Lo que se escribe en el cuerpo de la clase es un atributo de clase y se comparte; lo que se crea con self en el constructor es de instancia y pertenece a cada objeto."
+        explicacion: "patas es un atributo de clase y se puede leer desde cualquier objeto; nombre es de instancia y en este caso vale 'Rex'. print los muestra en el orden pedido."
       },
       {
         tipo: "multiple",
@@ -19007,16 +19010,12 @@ const CURSO = {
         explicacion: "La herencia encaja cuando la frase 'es un' suena natural. Las otras tres describen relaciones 'tiene un', que se resuelven con composicion."
       },
       {
-        tipo: "multiple",
-        enunciado: "La clase Gerente hereda de Empleado y define su propio constructor que recibe un departamento adicional. ¿Que debe hacer para no perder los atributos heredados?",
-        opciones: [
-          "Llamar a super().__init__(...) dentro de su constructor.",
-          "Copiar el codigo del constructor de Empleado linea a linea.",
-          "Declarar nombre y sueldo como atributos de clase.",
-          "No puede definir nunca su propio constructor si hereda."
-        ],
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "class Empleado:\n    def __init__(self, nombre):\n        self.nombre = nombre\nclass Gerente(Empleado):\n    def __init__(self, nombre, depto):\n        super().__init__(nombre)\n        self.depto = depto\ng = Gerente('Ana', 'Ventas')\nprint(g.nombre, g.depto)",
+        opciones: ["Ana Ventas", "Ana", "Ventas Ana", "Da un error"],
         respuestaCorrecta: 0,
-        explicacion: "super().__init__(...) ejecuta el constructor de la clase madre y crea los atributos heredados. Despues la clase hija anade los suyos, sin duplicar codigo."
+        explicacion: "super().__init__(nombre) llama al constructor de Empleado y guarda 'Ana' en self.nombre; después la clase hija añade self.depto. Por eso se imprimen los dos datos."
       },
       {
         tipo: "multiple",
@@ -22128,18 +22127,20 @@ const CURSO = {
         explicacion: "requests no funciona en el navegador. Se usa pyfetch dentro de una función async, esperando el resultado con await."
       },
       {
-        tipo: "multiple",
-        enunciado: "¿Qué excepción lanza Python al ejecutar 10 / 0?",
-        opciones: ["ValueError", "ZeroDivisionError", "TypeError", "KeyError"],
-        respuestaCorrecta: 1,
-        explicacion: "Dividir entre cero lanza ZeroDivisionError. Capturarlo permite avisar sin que el programa se detenga."
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "try:\n    resultado = 10 / 0\n    print(resultado)\nexcept ZeroDivisionError:\n    print('Error controlado')",
+        opciones: ["Error controlado", "0", "10", "Nada, el programa se detiene"],
+        respuestaCorrecta: 0,
+        explicacion: "La división entre cero lanza ZeroDivisionError, así que el print(resultado) nunca se ejecuta; el except captura el error y muestra su propio mensaje."
       },
       {
-        tipo: "multiple",
-        enunciado: "Tu programa abre en modo lectura un archivo que no existe todavía. ¿Qué excepción se lanza?",
-        opciones: ["FileNotFoundError", "ValueError", "IndexError", "SyntaxError"],
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "with open('notas.txt', 'w') as f:\n    f.write('hola')\nwith open('notas.txt', 'r') as f:\n    print(f.read())",
+        opciones: ["hola", "", "None", "Da un error porque el archivo no existía"],
         respuestaCorrecta: 0,
-        explicacion: "FileNotFoundError aparece cuando open() no encuentra el archivo. Es la excepción típica de la lectura de archivos."
+        explicacion: "El primer bloque crea el archivo y escribe 'hola' dentro. El segundo lo abre en modo lectura y f.read() devuelve justo ese texto, que print muestra."
       },
       {
         tipo: "multiple",
@@ -22154,16 +22155,12 @@ const CURSO = {
         explicacion: "raise lanza la excepción de forma intencionada y detiene el flujo normal. Un print solo mostraría un aviso y el programa continuaría con datos inválidos."
       },
       {
-        tipo: "multiple",
-        enunciado: "¿Cómo se define una excepción propia llamada ErrorDeDatos?",
-        opciones: [
-          "def ErrorDeDatos(Exception): pass",
-          "class ErrorDeDatos(Exception): pass",
-          "class ErrorDeDatos: return Exception",
-          "ErrorDeDatos = Exception('pass')"
-        ],
-        respuestaCorrecta: 1,
-        explicacion: "Se define con class y heredando de Exception, con pass como cuerpo. Así Python la reconoce como excepción y se puede lanzar con raise."
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "def revisar(n):\n    if n < 0:\n        raise ValueError('negativo')\n    return n\ntry:\n    print(revisar(-1))\nexcept ValueError:\n    print('Capturado')",
+        opciones: ["Capturado", "-1", "negativo", "Da un error no controlado"],
+        respuestaCorrecta: 0,
+        explicacion: "revisar(-1) lanza ValueError con raise antes de llegar al return. El try lo detecta y el except intercepta la excepción, así que solo se imprime Capturado."
       },
       {
         tipo: "multiple",
@@ -22180,11 +22177,12 @@ const CURSO = {
         explicacion: "plt.bar dibuja una barra por categoría, ideal para comparar cantidades. plt.plot uniría los puntos con una línea."
       },
       {
-        tipo: "multiple",
-        enunciado: "¿Qué muestra la f-string f'{precio:.2f}' cuando precio vale 7.5?",
-        opciones: ["7.5", "7.50", "8", "7.5000"],
-        respuestaCorrecta: 1,
-        explicacion: "El especificador .2f muestra siempre dos decimales, así que 7.5 aparece como 7.50. Es ideal para informes de precios o promedios."
+        tipo: "predice_salida",
+        enunciado: "¿Qué imprime este programa?",
+        codigo: "datos = {'nombre': 'Ana', 'edad': 12}\nprint(f\"{datos['nombre']} tiene {datos['edad']} años\")",
+        opciones: ["Ana tiene 12 años", "{nombre} tiene {edad} años", "Ana tiene edad años", "datos['nombre'] tiene 12 años"],
+        respuestaCorrecta: 0,
+        explicacion: "Las llaves de la f-string se sustituyen por el valor que hay dentro: datos['nombre'] es Ana y datos['edad'] es 12. El texto literal se mantiene entre ambos."
       }
     ]
   }
