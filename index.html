@@ -26989,6 +26989,16 @@ var Cuenta = {
     if (estado === 400 && detalle.indexOf('invalid login') !== -1) {
       return 'Ese correo o ese PIN no son correctos.';
     }
+    /* Configuraciones de Supabase que dejan el login inservible: se explican
+       con el nombre exacto del interruptor que hay que tocar. */
+    if (detalle.indexOf('email_provider_disabled') !== -1) {
+      return 'En este proyecto de Supabase está desactivado el acceso con correo. ' +
+        'Actívalo en Authentication → Providers → Email.';
+    }
+    if (detalle.indexOf('signup_disabled') !== -1) {
+      return 'El registro de nuevas cuentas está cerrado en este proyecto de Supabase. ' +
+        'Actívalo en Authentication → Providers → Email.';
+    }
     if (estado === 400) return 'La petición no es válida. ' + (detalle || '');
     if (estado === 401) return 'Tu sesión ha caducado. Vuelve a entrar.';
     if (estado === 403) return 'La base de datos ha rechazado la operación: revisa las reglas (RLS).';
