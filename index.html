@@ -27354,6 +27354,9 @@ var AccesoUI = {
 
   /* Muestra la pantalla de acceso, limpia */
   mostrar: function (mensaje, tipo) {
+    /* Nos aseguramos de no dejar ningún modal abierto por encima: el cierre
+       de sesión termina justo aquí y no queremos que quede nada tapando. */
+    Plantillas.cerrarTodosLosModales();
     AccesoUI.modo = 'entrar';
     AccesoUI.pin = '';
     AccesoUI.ocupado = false;
@@ -27556,7 +27559,7 @@ var AccesoUI = {
         'proyecto gratuito de Supabase. Lo tienes explicado paso a paso en ' +
         'Ajustes → Cuenta y sincronización.',
         [
-          { texto: 'Ver la guía', clase: 'btn--primario', alPulsar: function () {
+          { texto: 'Ver la guía', clase: 'btn--primario', cerrar: false, alPulsar: function () {
             AccesoUI.cerrarYIrAjustes();
             AccesoUI.mostrarGuia();
           } },
@@ -27570,7 +27573,7 @@ var AccesoUI = {
         'Ahora mismo tu progreso se guarda solo en este navegador. Si borras los datos del ' +
         'navegador, lo perderás. Entra con tu cuenta para tenerlo a salvo.',
         [
-          { texto: 'Entrar o crear cuenta', clase: 'btn--primario', alPulsar: function () {
+          { texto: 'Entrar o crear cuenta', clase: 'btn--primario', cerrar: false, alPulsar: function () {
             AccesoUI.mostrar();
           } },
           { texto: 'Ahora no', clase: 'btn--fantasma' }
@@ -27608,7 +27611,10 @@ var AccesoUI = {
         FX.toast('info', 'Sincronizando…');
         Sync.sincronizar(true);
       } },
-      { texto: 'Cerrar sesión', clase: 'btn--peligro', alPulsar: function () {
+      /* OJO con cerrar:false. Esta acción abre OTRO modal encima; si no se
+         pusiera, Plantillas.modal cerraría el genérico justo después y la
+         confirmación desaparecería antes de que el alumno pudiera pulsarla. */
+      { texto: 'Cerrar sesión', clase: 'btn--peligro', cerrar: false, alPulsar: function () {
         AccesoUI.cerrarSesion();
       } },
       { texto: 'Volver', clase: 'btn--fantasma' }
@@ -27621,24 +27627,35 @@ var AccesoUI = {
       'Subiremos tu progreso a la nube antes de salir, para que lo tengas cuando vuelvas. ' +
       'Después se borrará de este navegador. Tu clave de Groq y la configuración no se tocan.',
       [
-        { texto: 'Sí, cerrar sesión', clase: 'btn--peligro', alPulsar: function () {
+        { texto: 'Sí, cerrar sesión', clase: 'btn--peligro', cerrar: false, alPulsar: function () {
           AccesoUI._cerrarSesionDeVerdad();
         } },
         { texto: 'Cancelar', clase: 'btn--fantasma' }
       ]);
   },
 
-  /* El cierre de sesión propiamente dicho */
-  _cerrarSesionDeVerdad: async function () {
-    FX.toast('info', 'Guardando tu progreso en la nube…');
-
-    if (Cuenta.haySesion()) {
+  /* El cierre de sesión propiamente dicho.
+     Con forzar = true se cierra aunque no se haya podido subir, para que el
+     alumno nunca se quede atrapado dentro de una cuenta. */
+  _cerrarSesionDeVerdad: async function (forzar) {
+    if (!forzar && Cuenta.haySesion()) {
+      FX.toast('info', 'Guardando tu progreso en la nube…');
       var subida = await Cuenta.subirProgreso(State.datos,
         Tutor.datos ? Tutor.datos.conversaciones : {});
       if (!subida.ok) {
-        /* Nunca cerramos sesión si no se pudo guardar: así no se pierde nada */
-        FX.toast('error', 'No se pudo subir tu progreso (' + (subida.mensaje || '') +
-          '). No cierro la sesión para no perderlo. Inténtalo con internet.');
+        /* No cerramos a la ligera, pero damos una salida clara */
+        Plantillas.modal('No se pudo guardar tu progreso',
+          'No he podido subirlo a la nube: ' + (subida.mensaje || 'error de conexión.') +
+          ' Si cierras la sesión ahora, el progreso de ESTE navegador se borrará y al volver ' +
+          'encontrarás el que ya había en la nube.',
+          [
+            { texto: 'Reintentar', clase: 'btn--secundario', cerrar: false, alPulsar: function () {
+              AccesoUI._cerrarSesionDeVerdad();
+            } },
+            { texto: 'Cerrar sesión de todos modos', clase: 'btn--peligro', cerrar: false,
+              alPulsar: function () { AccesoUI._cerrarSesionDeVerdad(true); } },
+            { texto: 'Cancelar', clase: 'btn--fantasma' }
+          ]);
         return;
       }
     }
