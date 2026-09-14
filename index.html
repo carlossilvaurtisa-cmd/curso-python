@@ -5053,10 +5053,16 @@ var PyRunner = {
           break;
       }
       if (!cumple) {
-        fallos.push({
-          descripcion: validacion.descripcion || 'No se cumplió una comprobación.',
-          tipo: validacion.tipo
-        });
+        /* En 'salida_igual' el texto del curso a veces dice "en ese orden",
+           que despista: el problema casi siempre es otra cosa (una letra, dos
+           puntos...). Ponemos un mensaje exacto y dejamos que la comparación
+           línea a línea haga el trabajo de enseñar. */
+        var descripcion = validacion.descripcion || 'No se cumplió una comprobación.';
+        if (validacion.tipo === 'salida_igual') {
+          descripcion = 'Lo que imprimió tu programa no es exactamente lo que pedía el ' +
+            'enunciado. Abajo tienes la comparación línea a línea.';
+        }
+        fallos.push({ descripcion: descripcion, tipo: validacion.tipo });
       }
     });
 
@@ -23267,6 +23273,15 @@ var Vistas = {
       caja.appendChild(extra);
     }
 
+    /* Comparación línea a línea: es lo que de verdad enseña por qué falla.
+       Sin esto, un simple "=" en vez de ":" deja al alumno sin pistas. */
+    if (opciones.diff) {
+      var tituloDiff = Utils.crear('div', 'feedback__extra');
+      tituloDiff.appendChild(Utils.crear('strong', null, 'Compara lo que imprimió tu programa con lo que pedía el enunciado:'));
+      caja.appendChild(tituloDiff);
+      caja.appendChild(Vistas.diffDeSalida(opciones.diff.esperada, opciones.diff.obtenida));
+    }
+
     /* Fallos de validación (ejercicios de código) */
     if (opciones.fallos && opciones.fallos.length) {
       var listaFallos = Utils.crear('ul', 'feedback__extra');
@@ -23286,6 +23301,35 @@ var Vistas = {
     }
 
     if (opciones.correcto) FX.sonido('acierto'); else FX.sonido('error');
+  },
+
+  /* Compara la salida del alumno con la esperada, línea a línea.
+     Verde = esa línea está bien. Rojo = lo que imprimió. Azul = lo que pedía. */
+  diffDeSalida: function (esperada, obtenida) {
+    var exp = Utils.normalizarSalida(esperada).split('\n');
+    var obt = Utils.normalizarSalida(obtenida).split('\n');
+    var caja = Utils.crear('div', 'diff-visual');
+    var total = Math.max(exp.length, obt.length);
+
+    for (var i = 0; i < total; i++) {
+      var lineaEsperada = exp[i];
+      var lineaObtenida = obt[i];
+
+      if (lineaEsperada === lineaObtenida) {
+        caja.appendChild(Utils.crear('div', 'diff-linea diff-linea--ok',
+          '✓ ' + (lineaObtenida || '')));
+      } else {
+        if (lineaObtenida !== undefined && lineaObtenida !== '') {
+          caja.appendChild(Utils.crear('div', 'diff-linea diff-linea--mal',
+            '✗ Tu programa: ' + lineaObtenida));
+        }
+        if (lineaEsperada !== undefined && lineaEsperada !== '') {
+          caja.appendChild(Utils.crear('div', 'diff-linea diff-linea--esperada',
+            '→ Se esperaba: ' + lineaEsperada));
+        }
+      }
+    }
+    return caja;
   },
 
   /* Oculta el panel de feedback y vuelve a dejar el pie neutro */
@@ -24321,11 +24365,18 @@ var Ejercicios = {
       Ejercicios._marcarRequisitos(ejercicio, codigo, resultado.salida);
 
       if (!validacion.ok) {
+        /* ¿Falló la salida? Le enseñamos exactamente qué línea no cuadra y
+           qué se esperaba en su lugar. Y NO ponemos mensaje propio: así se
+           usa la explicación del propio ejercicio, escrita con más cuidado. */
+        var salidaEsperada = ejercicio.salidaEsperada || null;
+        (ejercicio.validaciones || []).forEach(function (v) {
+          if (v.tipo === 'salida_igual' && v.valor) salidaEsperada = v.valor;
+        });
+
         Ejercicios._resolver(ejercicio, entrada, false, {
           respuestaCorrecta: '',
-          mensaje: 'El programa se ejecutó, pero no cumple todo lo que pide el enunciado.',
           fallos: validacion.fallos,
-          salida: resultado.salida
+          diff: salidaEsperada ? { esperada: salidaEsperada, obtenida: resultado.salida } : null
         });
         return;
       }
