@@ -6588,16 +6588,20 @@ const CURSO = {
           id: "m1l5e5",
           tipo: "proyecto",
           orden: 5,
-          enunciado: "Mini proyecto: tu tarjeta de presentación. Escribe un programa que muestre una tarjeta con tu nombre, tu ciudad y tu lenguaje favorito, usando solo print y comentarios.",
+          enunciado: "Mini proyecto: tu tarjeta de presentación. Escribe un programa que muestre una tarjeta con TU nombre, TU ciudad y TU lenguaje favorito, usando solo print y comentarios. Los datos son los tuyos: los que no puedes cambiar son las etiquetas ni el orden de las líneas, que están en la lista de requisitos.",
           concepto: "proyecto_print",
           xp: 2,
           dificultad: 3,
           pista: "Usa un comentario con # para el título y varios print. Puedes juntar dos datos con un \\n dentro de una misma cadena.",
           requisitos: [
-            "El programa usa únicamente instrucciones print y comentarios con #.",
-            "Muestra al menos cuatro líneas de información en la salida.",
-            "Incluye al menos un comentario que explique qué hace el programa.",
-            "El programa se ejecuta sin ningún error de sintaxis."
+            "El programa usa solo print y comentarios con #.",
+            "La primera línea de la salida dice exactamente --- MI TARJETA ---",
+            "Después hay una línea con la etiqueta Nombre: seguida de tu nombre.",
+            "Después hay una línea con la etiqueta Ciudad: seguida de tu ciudad.",
+            "Después hay una línea con la etiqueta Lenguaje favorito: seguida de tu lenguaje.",
+            "La última línea dice exactamente Fin de la tarjeta",
+            "Hay al menos un comentario que explique qué hace el programa.",
+            "Se ejecuta sin errores de sintaxis y sin usar el signo igual."
           ],
           rubrica: [
             "El código se ejecuta sin errores.",
@@ -6608,9 +6612,9 @@ const CURSO = {
           codigoInicial: "# Tarjeta de presentación\n# Escribe debajo tus print\n",
           solucionComentada: "# Tarjeta de presentación de un estudiante\nprint('--- MI TARJETA ---')\nprint('Nombre: Ana')\nprint('Ciudad: Bogotá\\nLenguaje favorito: Python')\nprint('Fin de la tarjeta')",
           explicacionCorrecta: "Tu tarjeta usa print y comentarios, muestra varias líneas y se ejecuta sin errores. Has cerrado el primer bloque del curso con un programa que se lee de arriba abajo.",
-          explicacionIncorrecta: "Revisa que uses solo print y comentarios, que haya al menos cuatro líneas de salida y que no falte ningún paréntesis ni comilla. Un solo # mal colocado cambia el resultado.",
+          explicacionIncorrecta: "Fíjate en las etiquetas: cada línea tiene que empezar por --- MI TARJETA ---, Nombre:, Ciudad: o Lenguaje favorito:, y cerrarse con Fin de la tarjeta. Tus datos son tuyos, pero una etiqueta escrita de otra forma (o una línea que falta) no cuenta. Y revisa que no falte ningún paréntesis ni comilla.",
           validaciones: [
-        { tipo: "salida_igual", valor: "--- MI TARJETA ---\nNombre: Ana\nCiudad: Bogotá\nLenguaje favorito: Python\nFin de la tarjeta\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },
+        { tipo: "regex_salida", valor: "^--- MI TARJETA ---$[\\s\\S]*^Nombre: .+$[\\s\\S]*^Ciudad: .+$[\\s\\S]*^Lenguaje favorito: .+$[\\s\\S]*^Fin de la tarjeta$", descripcion: "La tarjeta debe tener las cinco lineas y las etiquetas de los requisitos, en ese orden. Tus datos pueden ser los que quieras" },
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
             { tipo: "contiene_codigo", valor: "#", descripcion: "Debes incluir un comentario" },
             { tipo: "contiene_codigo", valor: "print(", descripcion: "Debes usar instrucciones print" },
@@ -15564,7 +15568,7 @@ const CURSO = {
         { id: "m4l5e2", tipo: "multiple", orden: 2, enunciado: "Con def saludar(nombre, saludo='Hola'):, ¿que imprime saludar('Ana')?", opciones: ["Hola, Ana", "nombre, Ana", "Hola, saludo", "Da un error por falta de argumentos"], respuestaCorrecta: 0, concepto: "valor_por_defecto", xp: 2, dificultad: 1, pista: "Al no enviar el segundo argumento se usa el valor de reserva.", explicacionCorrecta: "Asi es: al no enviar saludo, se usa 'Hola' y por eso imprime 'Hola, Ana'.", explicacionIncorrecta: "El segundo parametro es opcional: si no lo envias, toma su valor por defecto 'Hola'." },
         { id: "m4l5e3", tipo: "completar", orden: 3, enunciado: "Completa el hueco para que exponente valga 2 cuando no se indique nada.", codigoConHuecos: "def potencia(base, exponente=___):\n    return base ** exponente\n\nprint(potencia(5))", piezas: ["2", "0", "1", "None"], solucion: ["2"], concepto: "valor_por_defecto", xp: 1, dificultad: 3, pista: "Elevar al cuadrado significa exponente 2.", explicacionCorrecta: "Correcto: con exponente=2 la llamada potencia(5) devuelve 25.", explicacionIncorrecta: "Si el exponente por defecto fuera 0 o 1, potencia(5) valdria 1 o 5, no 25. El valor correcto es 2." },
         { id: "m4l5e4", tipo: "codigo", orden: 4, enunciado: "Crea una funcion llamada precio_final que reciba un precio y un descuento con valor por defecto 0. Debe devolver el precio menos el descuento. Imprime precio_final(100) y precio_final(100, 20).", codigoInicial: "# Define aqui tu funcion precio_final\n", salidaEsperada: "100\n80", entradasSimuladas: [], validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def precio_final", descripcion: "Debes definir la funcion precio_final" }, { tipo: "contiene_codigo", valor: "= 0", descripcion: "El parametro descuento debe tener 0 como valor por defecto" }, { tipo: "salida_igual", valor: "100\n80", descripcion: "La salida debe ser 100 y luego 80" }], solucionComentada: "# descuento es opcional: si no llega, vale 0\ndef precio_final(precio, descuento=0):\n    return precio - descuento\n\n# Primera llamada: sin descuento\nprint(precio_final(100))\n# Segunda llamada: con 20 de descuento\nprint(precio_final(100, 20))", concepto: "valor_por_defecto", xp: 2, dificultad: 3, pista: "Un parametro con valor por defecto se declara en la cabecera con el signo igual. Y el descuento se RESTA al precio antes de devolver el resultado.", explicacionCorrecta: "¡Muy bien! Has creado una funcion flexible que funciona con uno o con dos argumentos.", explicacionIncorrecta: "Comprueba que el parametro descuento tenga valor por defecto 0 y que la funcion devuelva la resta." },
-        { id: "m4l5e5", tipo: "proyecto", orden: 5, enunciado: "Proyecto de la semana: tu recetario de funciones. Crea un pequeno programa con al menos cuatro funciones: una sin parametros, una con un parametro obligatorio, una con un valor por defecto y una que devuelva un calculo. Llamalas al final e imprime sus resultados.", concepto: "proyecto_funciones", xp: 3, dificultad: 3, pista: "Antes de escribir, anota en un papel el nombre y los parametros de cada funcion.", explicacionCorrecta: "¡Fantastico! Has construido un pequeno programa modular: cada funcion tiene una responsabilidad y todas se reutilizan desde el final del archivo.", explicacionIncorrecta: "Revisa que existan cuatro funciones con def, que al menos una tenga un parametro con valor por defecto y que todas se llamen despues de definirse.", requisitos: ["Define al menos cuatro funciones con def y nombres claros.", "Una de las funciones no lleva parametros.", "Otra recibe un parametro obligatorio.", "Otra usa un valor por defecto.", "Al menos una devuelve un valor con return.", "Llama a todas las funciones al final e imprime los resultados."], rubrica: ["Las funciones se definen con def y nombres que explican su proposito.", "El programa se ejecuta sin errores de indentacion.", "La funcion con valor por defecto funciona al llamarla con y sin ese argumento.", "La salida es ordenada y se entiende que resultado corresponde a cada funcion."], codigoInicial: "# Proyecto: recetario de funciones\n# 1) funcion sin parametros\n# 2) funcion con un parametro obligatorio\n# 3) funcion con valor por defecto\n# 4) funcion que devuelve un calculo\n", solucionComentada: "# Funcion sin parametros: siempre hace lo mismo\ndef saludar_general():\n    print('Hola a todos')\n\n# Funcion con un parametro obligatorio\ndef saludar_persona(nombre):\n    print('Hola,', nombre)\n\n# Funcion con un parametro obligatorio y otro con valor por defecto\ndef despedir(nombre, mensaje='Adios'):\n    return mensaje + ', ' + nombre\n\n# Funcion que devuelve un calculo\ndef doblar(n):\n    return n * 2\n\n# Llamadas: todas despues de sus definiciones\nsaludar_general()\nsaludar_persona('Ana')\nprint(despedir('Luis'))\nprint(despedir('Marta', 'Hasta pronto'))\nprint('El doble de 5 es', doblar(5))", validaciones: [
+        { id: "m4l5e5", tipo: "proyecto", orden: 5, enunciado: "Proyecto de la semana: tu recetario de funciones. Crea un pequeno programa con al menos cuatro funciones: una sin parametros, una con un parametro obligatorio, una con un valor por defecto y una que devuelva un calculo. Llamalas al final e imprime sus resultados. Para poder corregirlo, la salida tiene que ser exactamente esta: Hola a todos / Hola, Ana / Adios, Luis / Hasta pronto, Marta / El doble de 5 es 10 (una linea por frase, en ese orden).", concepto: "proyecto_funciones", xp: 3, dificultad: 3, pista: "Antes de escribir, anota en un papel el nombre y los parametros de cada funcion.", explicacionCorrecta: "¡Fantastico! Has construido un pequeno programa modular: cada funcion tiene una responsabilidad y todas se reutilizan desde el final del archivo.", explicacionIncorrecta: "Revisa que existan cuatro funciones con def, que al menos una tenga un parametro con valor por defecto y que todas se llamen despues de definirse.", requisitos: ["Define al menos cuatro funciones con def y nombres claros.", "Una de las funciones no lleva parametros.", "Otra recibe un parametro obligatorio.", "Otra usa un valor por defecto.", "Al menos una devuelve un valor con return.", "Llama a todas las funciones al final e imprime los resultados."], rubrica: ["Las funciones se definen con def y nombres que explican su proposito.", "El programa se ejecuta sin errores de indentacion.", "La funcion con valor por defecto funciona al llamarla con y sin ese argumento.", "La salida es ordenada y se entiende que resultado corresponde a cada funcion."], codigoInicial: "# Proyecto: recetario de funciones\n# 1) funcion sin parametros\n# 2) funcion con un parametro obligatorio\n# 3) funcion con valor por defecto\n# 4) funcion que devuelve un calculo\n", solucionComentada: "# Funcion sin parametros: siempre hace lo mismo\ndef saludar_general():\n    print('Hola a todos')\n\n# Funcion con un parametro obligatorio\ndef saludar_persona(nombre):\n    print('Hola,', nombre)\n\n# Funcion con un parametro obligatorio y otro con valor por defecto\ndef despedir(nombre, mensaje='Adios'):\n    return mensaje + ', ' + nombre\n\n# Funcion que devuelve un calculo\ndef doblar(n):\n    return n * 2\n\n# Llamadas: todas despues de sus definiciones\nsaludar_general()\nsaludar_persona('Ana')\nprint(despedir('Luis'))\nprint(despedir('Marta', 'Hasta pronto'))\nprint('El doble de 5 es', doblar(5))", validaciones: [
         { tipo: "salida_igual", valor: "Hola a todos\nHola, Ana\nAdios, Luis\nHasta pronto, Marta\nEl doble de 5 es 10\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def ", descripcion: "Debes definir funciones con def" }, { tipo: "contiene_codigo", valor: "return", descripcion: "Al menos una funcion debe devolver un valor" }, { tipo: "contiene_codigo", valor: "print(", descripcion: "Debes imprimir los resultados" }] }
       ]
     },
@@ -22999,7 +23003,7 @@ const CURSO = {
           entradasSimuladas: [],
           validaciones: [
             { tipo: "sin_error", descripcion: "El código debe ejecutarse sin errores" },
-            { tipo: "salida_igual", valor: "Módulo 4: Listas y diccionarios: 100% completado\nMódulo 5: Funciones y objetos: 75% completado\nMódulo 6: Temas avanzados: 90% completado\nRepaso completado", descripcion: "La salida debe ser exactamente esas cuatro líneas" },
+            { tipo: "regex_salida", valor: "^.+: \\d+% completado$[\\s\\S]*^.+: \\d+% completado$[\\s\\S]*^.+: \\d+% completado$[\\s\\S]*^Repaso completado$", descripcion: "Tres lineas con el formato nombre: X% completado (con tus modulos y tus numeros) y la ultima linea exactamente Repaso completado" },
             { tipo: "contiene_codigo", valor: "def porcentaje", descripcion: "Debes definir la función porcentaje" },
             { tipo: "contiene_codigo", valor: "assert", descripcion: "Debes probar la función con assert antes de usarla" }
           ],
@@ -25664,23 +25668,44 @@ var Ejercicios = {
       var indice = Number(item.getAttribute('data-requisito'));
       var texto = Utils.normalizar(requisitos[indice] || '');
       var cumple = false;
-      /* Se comprueba de forma sencilla: buscando palabras clave del requisito */
-      if (texto.indexOf('variable') !== -1) cumple = /=/.test(codigo);
-      else if (texto.indexOf('input') !== -1) cumple = codigo.indexOf('input(') !== -1;
-      else if (texto.indexOf('f-string') !== -1 || texto.indexOf('f"') !== -1) {
+
+      /* Se busca la palabra CLAVE, pero CON LIMITES DE PALABRA.
+         Sin ellos pasaba esto: el requisito "Muestra al menos cuatro lineas de
+         informacion en la salida" contiene "for" dentro de "informacion", asi
+         que activaba la comprobacion del bucle for y el requisito salia
+         SIEMPRE sin cumplir, aunque el alumno lo hubiera cumplido. Y al reves:
+         el patron 'variable' no casaba con "variables" (plural). */
+      function menciona(t, palabra) {
+        try { return new RegExp(BS + 'b' + palabra + BS + 'b').test(t); }
+        catch (err) { return false; }
+      }
+
+      if (menciona(texto, 'variables?')) cumple = /=/.test(codigo);
+      else if (menciona(texto, 'input')) cumple = codigo.indexOf('input(') !== -1;
+      else if (menciona(texto, 'f-string') || texto.indexOf('f"') !== -1) {
         cumple = /f["']/.test(codigo);
       }
-      else if (texto.indexOf('while') !== -1) cumple = codigo.indexOf('while') !== -1;
-      else if (texto.indexOf('for') !== -1) cumple = codigo.indexOf('for ') !== -1;
-      else if (texto.indexOf('if') !== -1) cumple = codigo.indexOf('if ') !== -1;
-      else if (texto.indexOf('funcion') !== -1 || texto.indexOf('función') !== -1) {
+      else if (menciona(texto, 'while')) cumple = codigo.indexOf('while') !== -1;
+      else if (menciona(texto, 'for')) cumple = codigo.indexOf('for ') !== -1;
+      else if (menciona(texto, 'if')) cumple = codigo.indexOf('if ') !== -1;
+      else if (menciona(texto, 'funciones?') || menciona(texto, 'funcion')) {
         cumple = codigo.indexOf('def ') !== -1;
       }
-      else if (texto.indexOf('lista') !== -1) cumple = /\[/.test(codigo);
-      else if (texto.indexOf('diccionario') !== -1) cumple = /\{/.test(codigo);
-      else if (texto.indexOf('clase') !== -1) cumple = codigo.indexOf('class ') !== -1;
-      else if (texto.indexOf('print') !== -1) cumple = codigo.indexOf('print(') !== -1;
-      else cumple = salida && salida.trim().length > 0;
+      else if (menciona(texto, 'listas?')) cumple = /\[/.test(codigo);
+      else if (menciona(texto, 'diccionarios?')) cumple = /\{/.test(codigo);
+      else if (menciona(texto, 'clases?')) cumple = codigo.indexOf('class ') !== -1;
+      else if (menciona(texto, 'print')) cumple = codigo.indexOf('print(') !== -1;
+      else {
+        /* Si el requisito nombra un texto literal de la salida (por ejemplo
+           "--- MI TARJETA ---"), se comprueba que la salida lo lleve de verdad.
+           Antes este tipo de requisito se daba por bueno con solo escribir algo. */
+        var literal = texto.match(/---[^-]+---/);
+        if (literal) {
+          cumple = Utils.normalizar(salida || '').indexOf(literal[0]) !== -1;
+        } else {
+          cumple = salida && salida.trim().length > 0;
+        }
+      }
       item.classList.toggle('requisito--cumplido', !!cumple);
     });
   },
