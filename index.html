@@ -3186,6 +3186,7 @@ body.tema-oscuro .tutor-fondo { background: rgba(0,0,0,.6); }
     <div class="tutor-acciones" id="tutor-acciones">
       <button class="tutor-chip" type="button" data-tutor-accion="pista">💡 Dame una pista</button>
       <button class="tutor-chip" type="button" data-tutor-accion="codigo">🔍 Revisa mi código</button>
+      <button class="tutor-chip" type="button" data-tutor-accion="profundizar">🔎 Profundizar en esto</button>
       <button class="tutor-chip" type="button" data-tutor-accion="explicar">📖 Explícamelo de otra forma</button>
       <button class="tutor-chip" type="button" data-tutor-accion="ejercicios">✏️ 3 ejercicios más</button>
     </div>
@@ -3200,7 +3201,7 @@ body.tema-oscuro .tutor-fondo { background: rgba(0,0,0,.6); }
     </form>
 
     <p class="tutor-privacidad" id="tutor-privacidad">
-      Se envía a Groq solo la lección activa y lo que tú escribas.
+      Se envía a Groq solo lo que tienes delante (lección, ejercicio o repaso) y lo que tú escribas.
     </p>
   </aside>
 </div>
@@ -3778,6 +3779,10 @@ var Store = {
         erroresPorConcepto: {},
         aciertosPorConcepto: {},
         repasoVencido: {},
+        /* Memoria de cada concepto, para la cola del olvido.
+           Por concepto se guarda cuándo se vio por última vez, cuántos días
+           aguanta sin repasarse y lo difícil que resulta para este alumno. */
+        memoriaConceptos: {},
         pistasExtra: 0,
         saltosDisponibles: 0,
         dobleXpHasta: 0,
@@ -4404,6 +4409,9 @@ var Game = {
     State.establecer('progreso.erroresPorConcepto', errores);
     State.establecer('progreso.estadisticas.ejerciciosFallados',
       (State.obtener('progreso.estadisticas.ejerciciosFallados') || 0) + 1);
+    /* Y se apunta en la memoria del concepto: un fallo ACORTA su intervalo,
+       así que volverá a aparecer antes que lo que sí recuerda. */
+    Game.memoriaDeConcepto(concepto, false);
   },
 
   /* Apunta un acierto en un concepto */
@@ -4413,6 +4421,7 @@ var Game = {
     State.establecer('progreso.aciertosPorConcepto', aciertos);
     State.establecer('progreso.estadisticas.ejerciciosResueltos',
       (State.obtener('progreso.estadisticas.ejerciciosResueltos') || 0) + 1);
+    if (concepto) Game.memoriaDeConcepto(concepto, true);
   },
 
   /* Lista de conceptos ordenada de peor a mejor, para la pantalla de Repaso */
@@ -4439,6 +4448,144 @@ var Game = {
       return b.errores - a.errores;
     });
     return lista;
+  },
+
+  /* ---------- MEMORIA POR CONCEPTO (la cola del olvido) ----------
+     Antes el repaso era una escalera fija de días (1, 3, 7, 21, 45) que
+     avanzaba según CUÁNTAS VECES habías repasado una lección, no según si
+     te acordabas. Eso es un calendario, no repetición espaciada.
+
+     Aquí cada CONCEPTO (el campo `concepto` que ya traen los 647 ejercicios,
+     y hay 330 distintos) lleva su propia cuenta de tres cosas:
+
+       intervalo  = cuántos días aguanta ese concepto en tu memoria (S)
+       facilidad  = lo difícil que te resulta a ti concretamente (D)
+       última vez = cuándo lo viste
+
+     Con eso se calcula la RECUPERABILIDAD (R), que es la probabilidad de que
+     te acuerdes hoy. Y el repaso del día no son las lecciones con fecha
+     vencida: son los conceptos con la R más baja. Es decir, lo que estás a
+     punto de olvidar, no lo que toca por calendario.
+
+     La regla que faltaba: si fallas, el intervalo se ACORTA. Antes daba
+     igual fallar que acertar: el calendario seguía avanzando. */
+  MEMORIA: {
+    INTERVALO_INICIAL: 1,      /* días que aguanta un concepto recién visto */
+    INTERVALO_MINIMO: 0.5,     /* medio día: un fallo vuelve enseguida */
+    INTERVALO_TOPE: 365,       /* techo, para que no se dispare sin fin */
+    FACILIDAD_INICIAL: 2.3,
+    FACILIDAD_MINIMA: 1.3,     /* suelo: un concepto difícil nunca se vuelve "fácil" solo */
+    FACILIDAD_MAXIMA: 2.8,
+    SUBIDA_FACILIDAD: 0.1,     /* al acertar */
+    BAJADA_FACILIDAD: 0.2,     /* al fallar: bajar cuesta el doble que subir */
+    CASTIGO_AL_FALLAR: 0.35,   /* el intervalo se queda en el 35 % de lo que era */
+    UMBRAL_VENCIDO: 0.9,       /* R por debajo de esto = toca repasar */
+    CUANTOS_POR_REPASO: 8,     /* conceptos por sesión de repaso */
+    MAX_EJERCICIOS: 12
+  },
+
+  /* ¿Qué probabilidad hay de que el alumno se acuerde hoy de este concepto?
+     Decae con los días transcurridos y sube con el intervalo que ha ganado. */
+  recuperabilidadDe: function (entrada, hoy) {
+    if (!entrada || !entrada.ultimaVez) return 1;   /* nunca visto: no hay nada que olvidar */
+    var dias = Utils.diasEntre(entrada.ultimaVez, hoy || Utils.hoyISO());
+    var intervalo = Math.max(0.1, entrada.intervalo || 1);
+    if (dias <= 0) return 1;
+    return Math.exp(-dias / intervalo);
+  },
+
+  /* Apunta cómo le ha ido con un concepto y recalcula su memoria.
+     Se llama desde registrarAciertoConcepto y registrarErrorConcepto. */
+  memoriaDeConcepto: function (concepto, acerto) {
+    if (!concepto) return null;
+    var memoria = State.obtener('progreso.memoriaConceptos') || {};
+    var M = Game.MEMORIA;
+    var entrada = memoria[concepto] || {
+      aciertos: 0, fallos: 0, ultimaVez: null,
+      intervalo: M.INTERVALO_INICIAL, facilidad: M.FACILIDAD_INICIAL
+    };
+
+    if (acerto) {
+      var r = Game.recuperabilidadDe(entrada);
+      entrada.aciertos = (entrada.aciertos || 0) + 1;
+      entrada.facilidad = Math.min(M.FACILIDAD_MAXIMA,
+        (entrada.facilidad || M.FACILIDAD_INICIAL) + M.SUBIDA_FACILIDAD);
+      /* Cuanto peor lo recordaba (R baja) y más fácil le resulta, más crece
+         el intervalo. Así el mismo concepto no vuelve siempre cada 7 días. */
+      var nuevo = (entrada.intervalo || 1) * entrada.facilidad * (1 - 0.15 * r);
+      entrada.intervalo = Math.max(M.INTERVALO_MINIMO,
+        Math.min(M.INTERVALO_TOPE, Math.round(nuevo * 10) / 10));
+    } else {
+      entrada.fallos = (entrada.fallos || 0) + 1;
+      entrada.facilidad = Math.max(M.FACILIDAD_MINIMA,
+        (entrada.facilidad || M.FACILIDAD_INICIAL) - M.BAJADA_FACILIDAD);
+      entrada.intervalo = Math.max(M.INTERVALO_MINIMO,
+        Math.round((entrada.intervalo || 1) * M.CASTIGO_AL_FALLAR * 10) / 10);
+    }
+
+    entrada.ultimaVez = Utils.hoyISO();
+    memoria[concepto] = entrada;
+    State.establecer('progreso.memoriaConceptos', memoria);
+    return entrada;
+  },
+
+  /* Los conceptos que estás a punto de olvidar, el que peor recuerdes primero.
+     Devuelve solo los que ya has trabajado alguna vez: no se puede olvidar lo
+     que nunca se ha aprendido. */
+  colaDeOlvido: function (cuantos) {
+    var memoria = State.obtener('progreso.memoriaConceptos') || {};
+    var aciertos = State.obtener('progreso.aciertosPorConcepto') || {};
+    var errores = State.obtener('progreso.erroresPorConcepto') || {};
+    var hoy = Utils.hoyISO();
+    var umbral = Game.MEMORIA.UMBRAL_VENCIDO;
+    var lista = [];
+
+    Object.keys(memoria).forEach(function (concepto) {
+      var entrada = memoria[concepto];
+      var r = Game.recuperabilidadDe(entrada, hoy);
+      if (r < umbral) {
+        lista.push({
+          concepto: concepto,
+          recuperabilidad: Math.round(r * 100) / 100,
+          intervalo: entrada.intervalo,
+          facilidad: Math.round((entrada.facilidad || 0) * 100) / 100,
+          aciertos: aciertos[concepto] || 0,
+          fallos: errores[concepto] || 0,
+          ultimaVez: entrada.ultimaVez,
+          /* Los días que lleva sin verlo: el tutor los usa para explicarse. */
+          dias: Math.max(0, Utils.diasEntre(entrada.ultimaVez, hoy))
+        });
+      }
+    });
+
+    lista.sort(function (a, b) { return a.recuperabilidad - b.recuperabilidad; });
+    return lista.slice(0, cuantos || Game.MEMORIA.CUANTOS_POR_REPASO);
+  },
+
+  /* Busca ejercicios del curso que trabajen esos conceptos.
+     Se cogen como mucho 2 por concepto para que la sesión cubra varios en vez
+     de repetir el mismo ocho veces. */
+  ejerciciosDeConceptos: function (conceptos, max) {
+    var quiere = {};
+    (conceptos || []).forEach(function (c) { quiere[c] = true; });
+
+    var elegidos = [];
+    (conceptos || []).forEach(function (concepto) {
+      var suyos = [];
+      (CURSO.modulos || []).forEach(function (modulo) {
+        (modulo.lecciones || []).forEach(function (leccion) {
+          (leccion.ejercicios || []).forEach(function (ejercicio) {
+            /* Los proyectos no entran en un repaso rápido */
+            if (ejercicio.concepto === concepto && ejercicio.tipo !== 'proyecto') {
+              suyos.push({ ejercicio: ejercicio, origen: 'repaso', modulo: modulo, leccion: leccion });
+            }
+          });
+        });
+      });
+      Utils.barajar(suyos).slice(0, 2).forEach(function (x) { elegidos.push(x); });
+    });
+
+    return elegidos.slice(0, max || Game.MEMORIA.MAX_EJERCICIOS);
   },
 
   /* ---------- REPETICIÓN ESPACIADA ---------- */
@@ -13948,7 +14095,7 @@ const CURSO = {
           concepto: "modificar_diccionario",
           xp: 2,
           dificultad: 3,
-          pista: "Actualiza con corchetes y asigna, añade igual con una clave nueva y borra con del inventario['manzanas'].",
+          pista: "Tres operaciones, y las tres se escriben con la clave entre corchetes: cambiar un valor y anadir uno nuevo usan la MISMA sintaxis. Para borrar hay una palabra reservada de Python que ya conoces: esta en la teoria de la leccion.",
           explicacionCorrecta: "Excelente: has actualizado, añadido y eliminado pares en un mismo diccionario.",
           explicacionIncorrecta: "Repasa los tres gestos: asignar sobre una clave existente, asignar sobre una nueva y borrar con del.",
           codigoInicial: "inventario = {'manzanas': 10, 'peras': 4}\n# Actualiza, añade y borra\n",
@@ -15385,8 +15532,8 @@ const CURSO = {
         { id: "m4l4e1", tipo: "multiple", orden: 1, enunciado: "En el codigo def saludar(nombre): seguido de saludar('Ana'), ¿que es 'Ana'?", opciones: ["El argumento", "El parametro", "El valor de retorno", "El nombre de la funcion"], respuestaCorrecta: 0, concepto: "parametro_vs_argumento", xp: 2, dificultad: 1, pista: "Fijate en donde aparece: en la definicion o en la llamada.", explicacionCorrecta: "Correcto: 'Ana' es el argumento, el valor real que se envia en la llamada; nombre es el parametro.", explicacionIncorrecta: "nombre, en la cabecera, es el parametro. El valor 'Ana' que envias en la llamada es el argumento." },
         { id: "m4l4e2", tipo: "multiple", orden: 2, enunciado: "Si defines def mezclar(a, b, c):, ¿cuantos argumentos debes enviar al llamarla?", opciones: ["3", "1", "2", "Los que quieras"], respuestaCorrecta: 0, concepto: "numero_de_argumentos", xp: 2, dificultad: 1, pista: "Cuenta los huecos entre los parentesis.", explicacionCorrecta: "Exacto: hay tres parametros, asi que la llamada necesita tres argumentos.", explicacionIncorrecta: "El numero de argumentos debe coincidir con el numero de parametros: aqui son tres." },
         { id: "m4l4e3", tipo: "completar", orden: 3, enunciado: "Completa el hueco para que la funcion imprima el nombre y la edad que recibe.", codigoConHuecos: "def presentar(nombre, edad):\n    print(nombre, 'tiene', ___)", piezas: ["edad", "nombre", "print", "return"], solucion: ["edad"], concepto: "parametros", xp: 1, dificultad: 3, pista: "Quieres mostrar la edad, que llega en el segundo parametro.", explicacionCorrecta: "Correcto: edad es el parametro que guarda la edad que llega.", explicacionIncorrecta: "Dentro del cuerpo debes usar el nombre del parametro que contiene la edad, es decir, edad." },
-        { id: "m4l4e4", tipo: "ordenar", orden: 4, enunciado: "Ordena las lineas para definir una funcion que calcule una potencia y luego usarla.", lineasDesordenadas: ["def potencia(base, exponente):", "    return base ** exponente", "print(potencia(2, 3))"], ordenCorrecto: [0, 1, 2], concepto: "parametros", xp: 2, dificultad: 3, pista: "La cabecera define los huecos y despues viene el cuerpo.", explicacionCorrecta: "¡Perfecto! La definicion con sus dos parametros va antes de la llamada.", explicacionIncorrecta: "Empieza por la cabecera def, sigue con el cuerpo indentado y termina con la llamada." },
-        { id: "m4l4e5", tipo: "codigo", orden: 5, enunciado: "Crea una funcion llamada rectangulo que reciba base y altura y devuelva el area (base por altura). Imprime el area de un rectangulo de base 5 y altura 3.", codigoInicial: "# Define aqui tu funcion rectangulo\n", salidaEsperada: "15", entradasSimuladas: [], validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def rectangulo", descripcion: "Debes definir la funcion rectangulo" }, { tipo: "salida_igual", valor: "15", descripcion: "La salida debe ser 15" }], solucionComentada: "# La funcion recibe dos parametros y devuelve el area\ndef rectangulo(base, altura):\n    return base * altura\n\n# Llamamos con base 5 y altura 3\nprint(rectangulo(5, 3))", concepto: "multiples_parametros", xp: 3, dificultad: 3, pista: "Usa return base * altura dentro de la funcion.", explicacionCorrecta: "¡Bien hecho! Has creado una funcion que trabaja con dos valores distintos.", explicacionIncorrecta: "Revisa que la funcion se llame rectangulo, reciba base y altura, y devuelva base * altura." }
+        { id: "m4l4e4", tipo: "ordenar", orden: 4, enunciado: "Ordena las lineas para definir una funcion que calcule una potencia y luego usarla.", lineasDesordenadas: ["print(potencia(2, 3))","    return base ** exponente","def potencia(base, exponente):"], ordenCorrecto: [2,1,0], concepto: "parametros", xp: 2, dificultad: 3, pista: "La cabecera define los huecos y despues viene el cuerpo.", explicacionCorrecta: "¡Perfecto! La definicion con sus dos parametros va antes de la llamada.", explicacionIncorrecta: "Empieza por la cabecera def, sigue con el cuerpo indentado y termina con la llamada." },
+        { id: "m4l4e5", tipo: "codigo", orden: 5, enunciado: "Crea una funcion llamada rectangulo que reciba base y altura y devuelva el area (base por altura). Imprime el area de un rectangulo de base 5 y altura 3.", codigoInicial: "# Define aqui tu funcion rectangulo\n", salidaEsperada: "15", entradasSimuladas: [], validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def rectangulo", descripcion: "Debes definir la funcion rectangulo" }, { tipo: "salida_igual", valor: "15", descripcion: "La salida debe ser 15" }], solucionComentada: "# La funcion recibe dos parametros y devuelve el area\ndef rectangulo(base, altura):\n    return base * altura\n\n# Llamamos con base 5 y altura 3\nprint(rectangulo(5, 3))", concepto: "multiples_parametros", xp: 3, dificultad: 3, pista: "La funcion no debe imprimir nada: debe DEVOLVER el area, para que quien la llame decida que hacer con ella. El area sale de multiplicar los dos parametros que recibe.", explicacionCorrecta: "¡Bien hecho! Has creado una funcion que trabaja con dos valores distintos.", explicacionIncorrecta: "Revisa que la funcion se llame rectangulo, reciba base y altura, y devuelva base * altura." }
       ]
     },
     {
@@ -15414,7 +15561,7 @@ const CURSO = {
         { id: "m4l5e1", tipo: "multiple", orden: 1, enunciado: "¿Cual de estas cabeceras es valida en Python?", opciones: ["def f(a, b=2):", "def f(a=1, b):", "def f(=1, b):", "def f(a b=2):"], respuestaCorrecta: 0, concepto: "orden_de_parametros", xp: 2, dificultad: 1, pista: "Los parametros obligatorios deben ir primero.", explicacionCorrecta: "Correcto: a es obligatorio y b tiene valor por defecto, asi que el orden es valido.", explicacionIncorrecta: "Un parametro con valor por defecto no puede ir antes de uno obligatorio, y las comas entre parametros son obligatorias." },
         { id: "m4l5e2", tipo: "multiple", orden: 2, enunciado: "Con def saludar(nombre, saludo='Hola'):, ¿que imprime saludar('Ana')?", opciones: ["Hola, Ana", "nombre, Ana", "Hola, saludo", "Da un error por falta de argumentos"], respuestaCorrecta: 0, concepto: "valor_por_defecto", xp: 2, dificultad: 1, pista: "Al no enviar el segundo argumento se usa el valor de reserva.", explicacionCorrecta: "Asi es: al no enviar saludo, se usa 'Hola' y por eso imprime 'Hola, Ana'.", explicacionIncorrecta: "El segundo parametro es opcional: si no lo envias, toma su valor por defecto 'Hola'." },
         { id: "m4l5e3", tipo: "completar", orden: 3, enunciado: "Completa el hueco para que exponente valga 2 cuando no se indique nada.", codigoConHuecos: "def potencia(base, exponente=___):\n    return base ** exponente\n\nprint(potencia(5))", piezas: ["2", "0", "1", "None"], solucion: ["2"], concepto: "valor_por_defecto", xp: 1, dificultad: 3, pista: "Elevar al cuadrado significa exponente 2.", explicacionCorrecta: "Correcto: con exponente=2 la llamada potencia(5) devuelve 25.", explicacionIncorrecta: "Si el exponente por defecto fuera 0 o 1, potencia(5) valdria 1 o 5, no 25. El valor correcto es 2." },
-        { id: "m4l5e4", tipo: "codigo", orden: 4, enunciado: "Crea una funcion llamada precio_final que reciba un precio y un descuento con valor por defecto 0. Debe devolver el precio menos el descuento. Imprime precio_final(100) y precio_final(100, 20).", codigoInicial: "# Define aqui tu funcion precio_final\n", salidaEsperada: "100\n80", entradasSimuladas: [], validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def precio_final", descripcion: "Debes definir la funcion precio_final" }, { tipo: "contiene_codigo", valor: "= 0", descripcion: "El parametro descuento debe tener 0 como valor por defecto" }, { tipo: "salida_igual", valor: "100\n80", descripcion: "La salida debe ser 100 y luego 80" }], solucionComentada: "# descuento es opcional: si no llega, vale 0\ndef precio_final(precio, descuento=0):\n    return precio - descuento\n\n# Primera llamada: sin descuento\nprint(precio_final(100))\n# Segunda llamada: con 20 de descuento\nprint(precio_final(100, 20))", concepto: "valor_por_defecto", xp: 2, dificultad: 3, pista: "Escribe descuento=0 en la cabecera y usa return precio - descuento.", explicacionCorrecta: "¡Muy bien! Has creado una funcion flexible que funciona con uno o con dos argumentos.", explicacionIncorrecta: "Comprueba que el parametro descuento tenga valor por defecto 0 y que la funcion devuelva la resta." },
+        { id: "m4l5e4", tipo: "codigo", orden: 4, enunciado: "Crea una funcion llamada precio_final que reciba un precio y un descuento con valor por defecto 0. Debe devolver el precio menos el descuento. Imprime precio_final(100) y precio_final(100, 20).", codigoInicial: "# Define aqui tu funcion precio_final\n", salidaEsperada: "100\n80", entradasSimuladas: [], validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def precio_final", descripcion: "Debes definir la funcion precio_final" }, { tipo: "contiene_codigo", valor: "= 0", descripcion: "El parametro descuento debe tener 0 como valor por defecto" }, { tipo: "salida_igual", valor: "100\n80", descripcion: "La salida debe ser 100 y luego 80" }], solucionComentada: "# descuento es opcional: si no llega, vale 0\ndef precio_final(precio, descuento=0):\n    return precio - descuento\n\n# Primera llamada: sin descuento\nprint(precio_final(100))\n# Segunda llamada: con 20 de descuento\nprint(precio_final(100, 20))", concepto: "valor_por_defecto", xp: 2, dificultad: 3, pista: "Un parametro con valor por defecto se declara en la cabecera con el signo igual. Y el descuento se RESTA al precio antes de devolver el resultado.", explicacionCorrecta: "¡Muy bien! Has creado una funcion flexible que funciona con uno o con dos argumentos.", explicacionIncorrecta: "Comprueba que el parametro descuento tenga valor por defecto 0 y que la funcion devuelva la resta." },
         { id: "m4l5e5", tipo: "proyecto", orden: 5, enunciado: "Proyecto de la semana: tu recetario de funciones. Crea un pequeno programa con al menos cuatro funciones: una sin parametros, una con un parametro obligatorio, una con un valor por defecto y una que devuelva un calculo. Llamalas al final e imprime sus resultados.", concepto: "proyecto_funciones", xp: 3, dificultad: 3, pista: "Antes de escribir, anota en un papel el nombre y los parametros de cada funcion.", explicacionCorrecta: "¡Fantastico! Has construido un pequeno programa modular: cada funcion tiene una responsabilidad y todas se reutilizan desde el final del archivo.", explicacionIncorrecta: "Revisa que existan cuatro funciones con def, que al menos una tenga un parametro con valor por defecto y que todas se llamen despues de definirse.", requisitos: ["Define al menos cuatro funciones con def y nombres claros.", "Una de las funciones no lleva parametros.", "Otra recibe un parametro obligatorio.", "Otra usa un valor por defecto.", "Al menos una devuelve un valor con return.", "Llama a todas las funciones al final e imprime los resultados."], rubrica: ["Las funciones se definen con def y nombres que explican su proposito.", "El programa se ejecuta sin errores de indentacion.", "La funcion con valor por defecto funciona al llamarla con y sin ese argumento.", "La salida es ordenada y se entiende que resultado corresponde a cada funcion."], codigoInicial: "# Proyecto: recetario de funciones\n# 1) funcion sin parametros\n# 2) funcion con un parametro obligatorio\n# 3) funcion con valor por defecto\n# 4) funcion que devuelve un calculo\n", solucionComentada: "# Funcion sin parametros: siempre hace lo mismo\ndef saludar_general():\n    print('Hola a todos')\n\n# Funcion con un parametro obligatorio\ndef saludar_persona(nombre):\n    print('Hola,', nombre)\n\n# Funcion con un parametro obligatorio y otro con valor por defecto\ndef despedir(nombre, mensaje='Adios'):\n    return mensaje + ', ' + nombre\n\n# Funcion que devuelve un calculo\ndef doblar(n):\n    return n * 2\n\n# Llamadas: todas despues de sus definiciones\nsaludar_general()\nsaludar_persona('Ana')\nprint(despedir('Luis'))\nprint(despedir('Marta', 'Hasta pronto'))\nprint('El doble de 5 es', doblar(5))", validaciones: [
         { tipo: "salida_igual", valor: "Hola a todos\nHola, Ana\nAdios, Luis\nHasta pronto, Marta\nEl doble de 5 es 10\n", descripcion: "La salida del programa debe coincidir con la del enunciado" },{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "def ", descripcion: "Debes definir funciones con def" }, { tipo: "contiene_codigo", valor: "return", descripcion: "Al menos una funcion debe devolver un valor" }, { tipo: "contiene_codigo", valor: "print(", descripcion: "Debes imprimir los resultados" }] }
       ]
@@ -15502,7 +15649,7 @@ const CURSO = {
       ejercicios: [
         { id: "m4l8e1", tipo: "multiple", orden: 1, enunciado: "En el ejemplo de la fabrica, ¿que guarda la variable doble?", opciones: ["Una funcion ya configurada para multiplicar por 2", "El numero 2", "El numero 10", "None"], respuestaCorrecta: 0, concepto: "retornar_funcion", xp: 2, dificultad: 1, pista: "hacer_multiplicador devuelve multiplicar, no su resultado.", explicacionCorrecta: "Correcto: doble es una funcion que, cuando la llamas, multiplica por 2.", explicacionIncorrecta: "hacer_multiplicador(2) devuelve la funcion multiplicar configurada, no un numero. Por eso despues puedes escribir doble(5)." },
         { id: "m4l8e2", tipo: "multiple", orden: 2, enunciado: "¿Que problema tiene esta funcion? def hacer_saludo(nombre):\n    def saludo():\n        print('Hola,', nombre)\n    return saludo()", opciones: ["Devuelve el resultado de ejecutar saludo, no la funcion; deberia poner return saludo", "Le falta un import", "No se puede definir una funcion dentro de otra", "El parametro nombre sobra"], respuestaCorrecta: 0, concepto: "retornar_funcion", xp: 2, dificultad: 1, pista: "Fijate en los parentesis despues de saludo.", explicacionCorrecta: "¡Muy bien! Con parentesis ejecutas la funcion; sin ellos, devuelves la funcion en si.", explicacionIncorrecta: "Los parentesis en return saludo() hacen que se ejecute y devuelva None. Para entregar la funcion hay que escribir return saludo sin parentesis." },
-        { id: "m4l8e3", tipo: "ordenar", orden: 3, enunciado: "Ordena las lineas para construir una fabrica de multiplicadores.", lineasDesordenadas: ["def hacer_multiplicador(n):", "    def multiplicar(x):", "        return x * n", "    return multiplicar"], ordenCorrecto: [0, 1, 2, 3], concepto: "retornar_funcion", xp: 2, dificultad: 3, pista: "La funcion interna se define antes de devolverla, y la indentacion crece por niveles.", explicacionCorrecta: "¡Excelente! La funcion externa define la interna y al final la devuelve sin parentesis.", explicacionIncorrecta: "Recuerda los niveles: cabecera externa, funcion interna indentada, su return mas indentado todavia, y el return de la funcion externa." },
+        { id: "m4l8e3", tipo: "ordenar", orden: 3, enunciado: "Ordena las lineas para construir una fabrica de multiplicadores.", lineasDesordenadas: ["        return x * n","    return multiplicar","def hacer_multiplicador(n):","    def multiplicar(x):"], ordenCorrecto: [2,3,0,1], concepto: "retornar_funcion", xp: 2, dificultad: 3, pista: "La funcion interna se define antes de devolverla, y la indentacion crece por niveles.", explicacionCorrecta: "¡Excelente! La funcion externa define la interna y al final la devuelve sin parentesis.", explicacionIncorrecta: "Recuerda los niveles: cabecera externa, funcion interna indentada, su return mas indentado todavia, y el return de la funcion externa." },
         { id: "m4l8e4", tipo: "predice_salida", orden: 4, enunciado: "¿Que imprime este programa?", codigo: "def hacer_multiplicador(n):\n    def multiplicar(x):\n        return x * n\n    return multiplicar\n\ndoble = hacer_multiplicador(2)\nprint(doble(5))", salidaCorrecta: "10", distractores: ["5", "2", "25"], concepto: "retornar_funcion", xp: 1, dificultad: 3, pista: "doble multiplica por 2 lo que le pases.", explicacionCorrecta: "Exacto: doble(5) aplica 5 por 2 y devuelve 10.", explicacionIncorrecta: "doble guarda la funcion configurada con n igual a 2, asi que doble(5) es 5 por 2, es decir, 10." },
         { id: "m4l8e5", tipo: "codigo", orden: 5, enunciado: "Crea una funcion llamada hacer_suma_fija que reciba un numero n y devuelva una funcion que sume n a lo que reciba. Crea sumar_diez = hacer_suma_fija(10) e imprime sumar_diez(5).", codigoInicial: "# Define aqui tu funcion hacer_suma_fija\n", salidaEsperada: "15", entradasSimuladas: [], validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "return", descripcion: "Debes devolver la funcion interna" }, { tipo: "salida_igual", valor: "15", descripcion: "La salida debe ser 15" }], solucionComentada: "# La funcion externa configura y devuelve la interna\ndef hacer_suma_fija(n):\n    def sumar(x):\n        return x + n\n    return sumar\n\n# sumar_diez es una funcion que suma 10\nsumar_diez = hacer_suma_fija(10)\nprint(sumar_diez(5))", concepto: "retornar_funcion", xp: 3, dificultad: 3, pista: "Dentro define sumar(x) que devuelva x + n, y fuera devuelve sumar sin parentesis.", explicacionCorrecta: "¡Fantastico! Has creado una funcion que fabrica funciones: uno de los patrones mas potentes de Python.", explicacionIncorrecta: "Revisa que el return final devuelva la funcion interna sin parentesis y que esa funcion sume x + n." }
       ]
@@ -15623,7 +15770,7 @@ const CURSO = {
         { id: "m4l12e2", tipo: "multiple", orden: 2, enunciado: "¿Que consigue la instruccion import math as m?", opciones: ["Importa math y le da el nombre corto m", "Importa solo la funcion m de math", "Renombra el archivo math del ordenador", "Crea un modulo nuevo llamado m"], respuestaCorrecta: 0, concepto: "alias", xp: 2, dificultad: 1, pista: "as sirve para poner apodo.", explicacionCorrecta: "Exacto: as crea un alias, asi que despues usas m.sqrt, m.pi, etc.", explicacionIncorrecta: "as no importa una funcion ni crea un modulo: solo le da otro nombre al modulo importado." },
         { id: "m4l12e3", tipo: "completar", orden: 3, enunciado: "Completa el import para poder llamar a sqrt sin el prefijo math.", codigoConHuecos: "from math import ___\n\nprint(sqrt(25))", piezas: ["sqrt", "math", "import", "pi"], solucion: ["sqrt"], concepto: "from_import", xp: 1, dificultad: 3, pista: "Lo que va despues de import es el nombre que querras usar directamente.", explicacionCorrecta: "Correcto: from math import sqrt y la salida es 5.0.", explicacionIncorrecta: "Despues de from y del nombre del modulo, import debes escribir el nombre de la funcion que quieres traer, en este caso sqrt." },
         { id: "m4l12e4", tipo: "cazar_bug", orden: 4, enunciado: "El programa usa sqrt pero no la ha importado. ¿En que linea aparece el fallo?", codigoConError: "valor = 16\nprint(sqrt(valor))", lineaErrorada: 2, codigoCorregido: "from math import sqrt\n\nvalor = 16\nprint(sqrt(valor))", concepto: "from_import", xp: 2, dificultad: 3, pista: "Preguntate de donde sale el nombre sqrt.", explicacionCorrecta: "¡Bien visto! Hay que importar sqrt antes de usarla; con from math import sqrt el programa funciona.", explicacionIncorrecta: "El nombre sqrt no existe en el programa, asi que la linea 2 lanza NameError. Falta el import correspondiente." },
-        { id: "m4l12e5", tipo: "codigo", orden: 5, enunciado: "Importa solo la constante pi desde el modulo math y usa round para imprimir pi redondeado a 2 decimales.", codigoInicial: "# Importa pi y redondeala a 2 decimales\n", salidaEsperada: "3.14", entradasSimuladas: [], validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "from math import", descripcion: "Debes importar con la forma from math import" }, { tipo: "usa_funcion", valor: "round", descripcion: "Debes usar round() para redondear" }, { tipo: "salida_igual", valor: "3.14", descripcion: "La salida debe ser 3.14" }], solucionComentada: "# Traemos solo la constante pi\nfrom math import pi\n\n# round(pi, 2) redondea a dos decimales\nprint(round(pi, 2))", concepto: "from_import", xp: 3, dificultad: 3, pista: "Escribe from math import pi y despues print(round(pi, 2)).", explicacionCorrecta: "¡Muy bien! Has importado un nombre concreto y lo has usado sin prefijo.", explicacionIncorrecta: "Comprueba el import (from math import pi) y que round reciba dos argumentos: la constante y el numero de decimales." }
+        { id: "m4l12e5", tipo: "codigo", orden: 5, enunciado: "Importa solo la constante pi desde el modulo math y usa round para imprimir pi redondeado a 2 decimales.", codigoInicial: "# Importa pi y redondeala a 2 decimales\n", salidaEsperada: "3.14", entradasSimuladas: [], validaciones: [{ tipo: "sin_error", descripcion: "El codigo debe ejecutarse sin errores" }, { tipo: "contiene_codigo", valor: "from math import", descripcion: "Debes importar con la forma from math import" }, { tipo: "usa_funcion", valor: "round", descripcion: "Debes usar round() para redondear" }, { tipo: "salida_igual", valor: "3.14", descripcion: "La salida debe ser 3.14" }], solucionComentada: "# Traemos solo la constante pi\nfrom math import pi\n\n# round(pi, 2) redondea a dos decimales\nprint(round(pi, 2))", concepto: "from_import", xp: 3, dificultad: 3, pista: "Para traer un solo nombre de un modulo se usa la forma from ... import ... . Despues hay que redondear ese valor a 2 decimales con la funcion que ya usaste en el mes 1.", explicacionCorrecta: "¡Muy bien! Has importado un nombre concreto y lo has usado sin prefijo.", explicacionIncorrecta: "Comprueba el import (from math import pi) y que round reciba dos argumentos: la constante y el numero de decimales." }
       ]
     },
     {
@@ -16217,7 +16364,7 @@ const CURSO = {
           concepto: "init_constructor",
           xp: 2,
           dificultad: 3,
-          pista: "Dentro del constructor asigna self.nombre = nombre y self.edad = edad, y luego imprime mascota.nombre y mascota.edad.",
+          pista: "Dentro del constructor, cada dato que llega como parametro tiene que guardarse DENTRO del objeto: el atributo vive en self y el parametro es el nombre que llega. Despues, para mostrarlo desde fuera, se accede con el punto.",
           explicacionCorrecta: "¡Genial! Tu constructor recibe los datos y los deja guardados dentro del objeto. Acabas de dar el paso que convierte una clase vacia en una plantilla util.",
           explicacionIncorrecta: "Comprueba que el metodo se llame __init__, que su primer parametro sea self y que dentro guardes los datos. Despues imprime los atributos en dos lineas separadas.",
           codigoInicial: "# Define aqui tu clase Mascota\n",
@@ -16365,7 +16512,7 @@ const CURSO = {
           concepto: "atributos",
           xp: 2,
           dificultad: 3,
-          pista: "Para unir texto y numero convierte el anio con str(): print(pelicula.titulo + ' - ' + str(pelicula.anio)).",
+          pista: "Ojo con el anio: es un numero y el titulo es texto, y Python no deja unirlos directamente con el signo mas. Convierte antes de concatenar.",
           explicacionCorrecta: "¡Muy bien! Guardaste dos atributos y los combinaste en un texto, usando str() para convertir el numero. Ese detalle evitara errores de tipo en el futuro.",
           explicacionIncorrecta: "Revisa dos puntos: que el anio se convierta con str() antes de unirlo al texto, y que el formato tenga exactamente el guion con espacios alrededor.",
           codigoInicial: "# Define aqui tu clase Pelicula\n",
@@ -16508,7 +16655,7 @@ const CURSO = {
           concepto: "metodos",
           xp: 2,
           dificultad: 3,
-          pista: "El metodo se define con def area(self): y termina con return self.base * self.altura.",
+          pista: "El area es un METODO porque necesita los datos del propio rectangulo. Dentro del metodo, los atributos se leen a traves de self, y el resultado se devuelve, no se imprime.",
           explicacionCorrecta: "¡Excelente! Ya combinas atributos y metodos: el objeto guarda sus datos y sabe calcular con ellos. Ese es el corazon de la programacion orientada a objetos.",
           explicacionIncorrecta: "Revisa que el metodo incluya self, que use los atributos con self.base y self.altura, y que llamen a r.area() con parentesis.",
           codigoInicial: "# Define aqui tu clase Rectangulo\n",
@@ -16812,7 +16959,7 @@ const CURSO = {
           concepto: "str_repr",
           xp: 2,
           dificultad: 3,
-          pista: "__str__(self) debe terminar con return self.titulo + ' - ' + self.artista.",
+          pista: "__str__ es el metodo que Python llama cuando haces print(objeto). Lo que DEVUELVA ese metodo es exactamente lo que aparece en pantalla.",
           explicacionCorrecta: "¡Muy bien! Ahora tus objetos se explican solos al imprimirlos. Este detalle hace que los mensajes del programa se entiendan sin abrir el codigo.",
           explicacionIncorrecta: "Revisa que el metodo se llame __str__, que empiece por self y que devuelva el texto con return. El formato exacto es titulo, guion y artista.",
           codigoInicial: "# Define aqui tu clase Cancion con su metodo __str__\n",
@@ -16955,7 +17102,7 @@ const CURSO = {
           concepto: "metodos_modificadores",
           xp: 2,
           dificultad: 3,
-          pista: "El constructor puede ser def __init__(self, valor=0) y el metodo debe hacer self.valor = self.valor + 1.",
+          pista: "El contador puede empezar en 0 de dos formas: dandole un valor por defecto en el constructor, o asignandolo dentro. Y el metodo tiene que LEER el valor actual, sumarle uno y GUARDARLO otra vez en el mismo sitio.",
           explicacionCorrecta: "¡Muy bien! Tu objeto guarda un estado que evoluciona con cada llamada. Esta idea de acumular cambios es la base de contadores, saldos e inventarios.",
           explicacionIncorrecta: "Comprueba que valor empiece en 0, que incrementar use self.valor = self.valor + 1 y que llames al metodo tres veces antes de imprimir.",
           codigoInicial: "# Define aqui tu clase Contador\n",
@@ -17247,7 +17394,7 @@ const CURSO = {
           concepto: "composicion",
           xp: 2,
           dificultad: 3,
-          pista: "Dentro del constructor de Persona crea el objeto: self.direccion = Direccion(calle, ciudad).",
+          pista: "Esto es composicion, como en la leccion: una Persona TIENE una Direccion. Dentro del constructor de Persona hay que CREAR un objeto de la otra clase con los datos que llegan y guardarlo en un atributo.",
           explicacionCorrecta: "¡Muy bien! Has creado un objeto dentro de otro y has llegado a su dato con dos puntos. La composicion te permitira modelar bibliotecas, equipos y cursos.",
           explicacionIncorrecta: "Comprueba que Persona cree una Direccion en su constructor y que imprimas exactamente p.direccion.ciudad, con los dos puntos en orden.",
           codigoInicial: "# Define aqui las clases Direccion y Persona\n",
@@ -17397,7 +17544,7 @@ const CURSO = {
           concepto: "proyecto_validacion",
           xp: 2,
           dificultad: 3,
-          pista: "Estructura vender asi: primero los if de rechazo con return False, y al final del metodo self.stock = self.stock - cantidad seguido de return True.",
+          pista: "Vender es comprobar y, solo si se puede, descontar. Empieza por los if que RECHAZAN la venta (sin stock, cantidad invalida) y haz que devuelvan False: asi todo lo que venga despues ya se sabe que es valido.",
           explicacionCorrecta: "¡Excelente trabajo! Has cerrado la semana construyendo una clase que se defiende de los datos erroneos y que informa del resultado de cada operacion. Ese patron es exactamente el que usaras en el Gestor de Biblioteca.",
           explicacionIncorrecta: "Revisa tres cosas: la validacion del constructor con if, los dos rechazos de vender (cantidad no positiva y cantidad mayor que el stock) y que el metodo devuelva True solo cuando la venta se realiza.",
           requisitos: [
@@ -17552,7 +17699,7 @@ const CURSO = {
           concepto: "herencia",
           xp: 2,
           dificultad: 3,
-          pista: "Declara class Moto(Vehiculo): y no escribas constructor: el de Vehiculo se hereda y funciona con un solo argumento.",
+          pista: "La clase hija declara a la madre entre parentesis. Y si no necesita nada nuevo, NO escribas constructor: el de la madre se hereda tal cual y funciona igual.",
           explicacionCorrecta: "¡Muy bien! Moto reutiliza el constructor y el metodo de Vehiculo sin repetir codigo. Esa es la ganancia principal de la herencia.",
           explicacionIncorrecta: "Comprueba que Moto se declare como class Moto(Vehiculo), que no necesitas definir constructor propio y que los tres metodos se impriman en el orden pedido.",
           codigoInicial: "# Define aqui las clases Vehiculo y Moto\n",
@@ -17695,7 +17842,7 @@ const CURSO = {
           concepto: "super",
           xp: 2,
           dificultad: 3,
-          pista: "En el constructor de Gerente: primero super().__init__(nombre, sueldo) y despues self.departamento = departamento.",
+          pista: "El constructor de la hija tiene una responsabilidad mas que el de la madre. Empieza llamando al de la madre con super para que haga su parte, y DESPUES guarda el dato nuevo.",
           explicacionCorrecta: "¡Excelente! Delegas en la clase madre lo que ya sabe hacer y solo anades lo nuevo. Con super() tus jerarquias de clases se mantienen limpias y sin duplicar codigo.",
           explicacionIncorrecta: "Comprueba que Gerente herede de Empleado, que la primera linea de su constructor llame a super().__init__(nombre, sueldo) y que despues guarde self.departamento.",
           codigoInicial: "# Define aqui las clases Empleado y Gerente\n",
@@ -17838,7 +17985,7 @@ const CURSO = {
           concepto: "sobrescribir",
           xp: 2,
           dificultad: 3,
-          pista: "El metodo de la hija termina asi: return super().moverse() + ' y vuela'.",
+          pista: "El metodo sobrescrito no tiene por que copiar el de la madre: puede reutilizarlo llamandolo con super, y anadirle lo propio del pajaro.",
           explicacionCorrecta: "¡Muy bien! Ampliaste el comportamiento heredado en lugar de reescribirlo. Esa tecnica mantiene una sola fuente de verdad para el texto base.",
           explicacionIncorrecta: "Comprueba que Pajaro defina moverse con el nombre exacto y que dentro use super().moverse() + ' y vuela'. El resultado debe ser exactamente Camina y vuela.",
           codigoInicial: "# Define aqui las clases Animal y Pajaro\n",
@@ -18108,7 +18255,7 @@ const CURSO = {
           concepto: "property",
           xp: 2,
           dificultad: 3,
-          pista: "Escribe @property justo encima de def sueldo_anual(self): y termina el metodo con return self.sueldo_mensual * 12.",
+          pista: "La arroba property es un decorador que convierte un metodo en algo que se lee COMO UN ATRIBUTO, sin parentesis. Y su valor es un calculo: el sueldo del anio a partir del mes.",
           explicacionCorrecta: "¡Muy bien! Tu objeto calcula el sueldo anual al momento y lo ofrece como un dato mas. Si el sueldo mensual cambia, la property siempre devuelve el valor correcto.",
           explicacionIncorrecta: "Revisa que el decorador @property este justo encima del metodo, que el nombre sea sueldo_anual y que se imprima sin parentesis: print(e.sueldo_anual).",
           codigoInicial: "# Define aqui tu clase Empleado con la property sueldo_anual\n",
@@ -18130,7 +18277,7 @@ const CURSO = {
           concepto: "proyecto_herencia",
           xp: 2,
           dificultad: 3,
-          pista: "Para el pato: return 'Cuac (' + super().sonido() + ')' y una property puede_volar que devuelva True. En el bucle imprime animal.descripcion() y animal.sonido().",
+          pista: "El pato devuelve un texto que CONTIENE el sonido de la madre mas algo propio: reutiliza super en vez de repetir el texto. Y puede_volar es un valor calculado, asi que se expone como propiedad.",
           explicacionCorrecta: "¡Enhorabuena! Has reunido herencia, sobrescritura, super(), polimorfismo y una property en un solo programa. Estás listo para el Gestor de Biblioteca del proyecto final.",
           explicacionIncorrecta: "Revisa la lista de requisitos uno a uno: clase base Animal completa, dos subclases que sobrescriben sonido(), un Pato que usa super() y una property puede_volar, y un bucle que imprime descripcion y sonido de cada animal.",
           requisitos: [
@@ -18285,7 +18432,7 @@ const CURSO = {
           concepto: "depuracion",
           xp: 2,
           dificultad: 3,
-          pista: "Dentro de retirar usa dos condiciones if de rechazo con return y, al final, self.saldo = self.saldo - cantidad.",
+          pista: "Retirar es como vender en el ejercicio del inventario: primero los if de rechazo (cantidad invalida, saldo insuficiente) con return, y solo al final la resta, que tiene que GUARDARSE en el mismo atributo.",
           explicacionCorrecta: "¡Muy bien! Tu clase tiene atributo de clase, atributo de instancia y un metodo que protege el estado. Ya escribes POO con las buenas practicas del modulo.",
           explicacionIncorrecta: "Revisa tres cosas: el atributo de clase fuera del constructor, las validaciones de retirar con if y que el saldo final sea 70 tras retirar 30 de 100.",
           codigoInicial: "# Escribe aqui tu clase CuentaBancaria\n",
@@ -18731,7 +18878,7 @@ const CURSO = {
           concepto: "responsabilidades",
           xp: 2,
           dificultad: 3,
-          pista: "La lista debe crearse dentro de __init__ con self.prestamos = []. El metodo cuantos puede devolver len(self.prestamos).",
+          pista: "Una lista vacia como atributo se crea DENTRO del constructor, no en la clase: si la escribieras fuera, todos los usuarios compartirian la misma lista. Y para contar elementos ya conoces una funcion del mes 1.",
           explicacionCorrecta: "¡Muy bien! Tu clase Usuario cumple una responsabilidad clara: guardar el historial de prestamos. Esa es exactamente la pieza que necesitas para el proyecto final.",
           explicacionIncorrecta: "Comprueba que la lista se cree dentro del constructor (no en la clase), que tomar_prestamo use append y que cuantos devuelva len(self.prestamos).",
           codigoInicial: "# Define aqui la clase Usuario\n",
@@ -18862,7 +19009,7 @@ const CURSO = {
           concepto: "proyecto_final",
           xp: 2,
           dificultad: 3,
-          pista: "Usa un for libro in self.libros: si el titulo coincide, comprueba libro.disponible con un if. Si termina el bucle sin encontrarlo, avisa y devuelve False.",
+          pista: "Recorre la lista de la biblioteca comparando el titulo de cada libro con el que te piden. Si lo encuentras y esta disponible, prestalo y devuelve True. Si terminas el bucle SIN encontrarlo, es que no esta: avisa y devuelve False.",
           explicacionCorrecta: "¡Excelente! Has escrito el corazon del sistema: buscar, validar y solo entonces cambiar el estado de dos objetos a la vez. Ahora un libro no puede prestarse dos veces.",
           explicacionIncorrecta: "Revisa los tres caminos: libro inexistente (mensaje y False), libro ya prestado (mensaje y False) y libro libre (prestar, anotar y True). El return False del final cubre el caso de no encontrarlo.",
           codigoInicial: "class Libro:\n    def __init__(self, titulo, autor):\n        self.titulo = titulo\n        self.autor = autor\n        self.disponible = True\n\n    def prestar(self):\n        if not self.disponible:\n            return False\n        self.disponible = False\n        return True\n\n\nclass Usuario:\n    def __init__(self, nombre):\n        self.nombre = nombre\n        self.prestamos = []\n\n    def tomar_prestamo(self, libro):\n        self.prestamos.append(libro)\n\n\nclass Biblioteca:\n    def __init__(self, nombre):\n        self.nombre = nombre\n        self.libros = []\n\n    def agregar_libro(self, libro):\n        self.libros.append(libro)\n\n    def prestar_libro(self, titulo, usuario):\n        # Escribe aqui tu codigo\n        pass\n\n\nb = Biblioteca('Central')\nb.agregar_libro(Libro('El Quijote', 'Cervantes'))\nana = Usuario('Ana')\nluis = Usuario('Luis')\nprint(b.prestar_libro('El Quijote', ana))\nprint(b.prestar_libro('El Quijote', luis))",
@@ -18884,7 +19031,7 @@ const CURSO = {
           concepto: "proyecto_final",
           xp: 2,
           dificultad: 3,
-          pista: "Escribe una clase a la vez y prueba cada una antes de pasar a la siguiente. Para prestar_libro: busca el libro, comprueba con if que exista y que este disponible, y solo entonces llama a libro.prestar() y a usuario.tomar_prestamo(libro).",
+          pista: "Ve clase por clase y prueba cada una antes de escribir la siguiente. Para prestar: busca el libro, comprueba que existe Y que esta disponible, y solo entonces haz las dos cosas que hay que hacer: una en el libro y otra en el usuario.",
           explicacionCorrecta: "¡Enhorabuena! Has construido un sistema completo con clases que colaboran, herencia, composicion, validacion con if y contador de clase. Eso es programacion orientada a objetos de verdad, y es tuyo.",
           explicacionIncorrecta: "Repasa los requisitos uno a uno y prueba siempre los tres casos limite: libro inexistente, libro ya prestado y devolucion. Si los tres responden con un mensaje y sin romperse, solo faltan detalles.",
           requisitos: [
@@ -19433,15 +19580,8 @@ const CURSO = {
           concepto: "csv_writer",
           xp: 2,
           dificultad: 3,
-          lineasDesordenadas: [
-            "import csv",
-            "with open('datos.csv', 'w', newline='', encoding='utf-8') as f:",
-            "    escritor = csv.writer(f)",
-            "    escritor.writerow(['Ana', 8])",
-            "with open('datos.csv', 'r', encoding='utf-8') as f:",
-            "    print(next(csv.reader(f)))"
-          ],
-          ordenCorrecto: [0, 1, 2, 3, 4, 5],
+          lineasDesordenadas: ["import csv","    escritor.writerow(['Ana', 8])","with open('datos.csv', 'r', encoding='utf-8') as f:","    escritor = csv.writer(f)","    print(next(csv.reader(f)))","with open('datos.csv', 'w', newline='', encoding='utf-8') as f:"],
+          ordenCorrecto: [0,5,3,1,2,4],
           pista: "Primero se importa, después se escribe y al final se lee.",
           explicacionCorrecta: "El orden natural es importar el módulo, escribir el archivo y luego abrirlo en modo lectura para comprobar el resultado.",
           explicacionIncorrecta: "No se puede leer un archivo antes de escribirlo, y el import siempre va primero. Sigue la secuencia importar, escribir, leer."
@@ -19935,7 +20075,7 @@ const CURSO = {
             { tipo: "contiene_codigo", valor: "except", descripcion: "Debes capturar el error con except" },
             { tipo: "usa_funcion", valor: "int", descripcion: "Debes intentar la conversión con int()" }
           ],
-          pista: "Dentro del try haz numero = int(texto); en el except ValueError muestra el mensaje y deja numero en 0. Imprime numero al final.",
+          pista: "Lo que puede fallar es la CONVERSION, no el input. Mete la conversion dentro del try; si falla, en el except deja la variable en 0 y muestra el mensaje pedido.",
           explicacionCorrecta: "Protegiste la conversión con try/except y definiste un valor por defecto. El programa sobrevive aunque la entrada no sea un número.",
           explicacionIncorrecta: "Si no envuelves int() en el try, el programa se detiene con ValueError. Revisa también que el mensaje se imprima solo en el except y que la variable quede en 0.",
           solucionComentada: "# Leemos la entrada del usuario como texto\ntexto = input('Escribe un número: ')\nnumero = 0\n\n# Intentamos convertir el texto en entero\ntry:\n    numero = int(texto)\nexcept ValueError:\n    # Si falla, avisamos y dejamos el valor por defecto\n    print('Dato no válido')\n    numero = 0\n\nprint(numero)\n"
@@ -20034,16 +20174,8 @@ const CURSO = {
           concepto: "try_orden",
           xp: 2,
           dificultad: 3,
-          lineasDesordenadas: [
-            "try:",
-            "    with open('datos.txt', 'r') as f:",
-            "        texto = f.read()",
-            "except FileNotFoundError:",
-            "    print('No existe el archivo')",
-            "finally:",
-            "    print('Proceso terminado')"
-          ],
-          ordenCorrecto: [0, 1, 2, 3, 4, 5, 6],
+          lineasDesordenadas: ["finally:","except FileNotFoundError:","        texto = f.read()","    print('No existe el archivo')","try:","    with open('datos.txt', 'r') as f:","    print('Proceso terminado')"],
+          ordenCorrecto: [4,5,2,1,3,0,6],
           pista: "Primero el intento, después el plan de error y por último la limpieza.",
           explicacionCorrecta: "El orden try, except y finally es obligatorio y refleja el flujo natural: intento, error y cierre garantizado.",
           explicacionIncorrecta: "Si colocas finally antes del except Python ni siquiera podrá ejecutar el programa. El orden es try, except, else y finally."
@@ -20221,7 +20353,7 @@ const CURSO = {
             { tipo: "salida_contiene", valor: "Clave no encontrada", descripcion: "La salida debe avisar de que faltaba la clave" },
             { tipo: "no_contiene_codigo", valor: "except:", descripcion: "Evita un except genérico: captura el tipo concreto" }
           ],
-          pista: "Dentro del try escribe print(precios['leche']) y en el except KeyError muestra el mensaje pedido.",
+          pista: "Lo que provoca el error es ACCEDER al diccionario con una clave que no existe: pon ese acceso dentro del try y captura el tipo de excepcion que corresponde a una clave que falta.",
           explicacionCorrecta: "Capturaste el KeyError con precisión, sin un except genérico. Así el programa distingue un diccionario incompleto de cualquier otro fallo.",
           explicacionIncorrecta: "Si usas un except sin tipo, atrapas cualquier error y pierdes información. El tipo concreto aquí es KeyError, porque se pide una clave que no existe.",
           solucionComentada: "precios = {'pan': 2}\n\ntry:\n    # Esta clave no existe, así que lanzará KeyError\n    print(precios['leche'])\nexcept KeyError:\n    # Capturamos el error concreto de clave inexistente\n    print('Clave no encontrada: leche')\n"
@@ -20363,7 +20495,7 @@ const CURSO = {
             { tipo: "contiene_codigo", valor: "as error", descripcion: "Debes capturar la excepción con as error" },
             { tipo: "salida_contiene", valor: "La edad no puede ser negativa", descripcion: "La salida debe mostrar el mensaje lanzado" }
           ],
-          pista: "Dentro de la función usa if edad < 0: raise ValueError('La edad no puede ser negativa'). Luego llama con verificar_edad(-5) dentro del try y en except ValueError as error imprime print(error).",
+          pista: "Primero comprueba la condicion invalida y LANZA la excepcion con el mensaje pedido; luego, quien la llame, la captura. Fijate en que aqui el error lo provocas tu a proposito.",
           explicacionCorrecta: "Combinaste raise con try/except y recuperaste el mensaje de la excepción. Este es el patrón profesional para validar datos y explicar el fallo.",
           explicacionIncorrecta: "Si solo imprimes el mensaje dentro del except sin usar as error, no verás el texto lanzado. Recuerda que el mensaje viaja dentro de la excepción.",
           solucionComentada: "def verificar_edad(edad):\n    # Validamos el dato y lanzamos nuestro propio error si no cumple\n    if edad < 0:\n        raise ValueError('La edad no puede ser negativa')\n    return edad\n\ntry:\n    # Esta llamada provocará la excepción que lanzamos arriba\n    verificar_edad(-5)\nexcept ValueError as error:\n    # Recuperamos el mensaje guardado dentro de la excepción\n    print(error)\n"
@@ -20461,15 +20593,8 @@ const CURSO = {
           concepto: "excepcion_propia",
           xp: 2,
           dificultad: 3,
-          lineasDesordenadas: [
-            "class EdadInvalida(Exception):",
-            "    pass",
-            "def registrar(edad):",
-            "    if edad < 0:",
-            "        raise EdadInvalida('Edad negativa')",
-            "    return edad"
-          ],
-          ordenCorrecto: [0, 1, 2, 3, 4, 5],
+          lineasDesordenadas: ["def registrar(edad):","class EdadInvalida(Exception):","        raise EdadInvalida('Edad negativa')","    return edad","    if edad < 0:","    pass"],
+          ordenCorrecto: [1,5,0,4,2,3],
           pista: "Primero se define la excepción y después la función que la utiliza.",
           explicacionCorrecta: "El orden correcto define la clase antes de usarla, porque Python necesita conocer el nombre de la excepción cuando llega al raise.",
           explicacionIncorrecta: "Si usas la excepción antes de definirla, Python dará NameError. Define siempre la clase primero."
@@ -20506,7 +20631,7 @@ const CURSO = {
             { tipo: "contiene_codigo", valor: "raise NotaInvalida", descripcion: "Debes lanzar tu excepción con raise" },
             { tipo: "salida_contiene", valor: "La nota debe estar entre 0 y 10", descripcion: "La salida debe mostrar el mensaje de tu excepción" }
           ],
-          pista: "Define la clase con pass, en la función usa if nota < 0 or nota > 10: raise NotaInvalida('La nota debe estar entre 0 y 10'), y captura con except NotaInvalida as error.",
+          pista: "Tu excepcion es una clase que hereda de Exception, y el cuerpo puede estar vacio con pass. En la funcion, la condicion a rechazar es la nota FUERA DE RANGO: ahi se lanza la tuya con su mensaje.",
           explicacionCorrecta: "Creaste una excepción con nombre propio y la usaste con raise y try/except. Tu código ahora comunica errores en su propio vocabulario.",
           explicacionIncorrecta: "Revisa que la clase herede de Exception y que el except capture NotaInvalida, no un error genérico. El mensaje debe ir dentro del raise.",
           solucionComentada: "# Definimos nuestra propia excepción heredando de Exception\nclass NotaInvalida(Exception):\n    pass\n\ndef revisar(nota):\n    # Validamos el rango permitido\n    if nota < 0 or nota > 10:\n        raise NotaInvalida('La nota debe estar entre 0 y 10')\n    return nota\n\ntry:\n    revisar(12)\nexcept NotaInvalida as error:\n    # Mostramos el mensaje que llevaba nuestra excepción\n    print(error)\n"
@@ -20540,7 +20665,7 @@ const CURSO = {
             { tipo: "usa_funcion", valor: "len", descripcion: "Debes comprobar la longitud con len()" },
             { tipo: "contiene_codigo", valor: "raise ContrasenaDebil", descripcion: "Debes lanzar tu excepción con raise" }
           ],
-          pista: "En validar usa if len(contrasena) < 8: raise ContrasenaDebil('La contraseña es demasiado corta'). Después llama con 'abc' y captura ContrasenaDebil as error para imprimir el mensaje.",
+          pista: "La condicion invalida es la contrasena DEMASIADO CORTA: usa len para medirla y lanza tu excepcion con el mensaje pedido. Despues pruebala con una que falle y captura tu propio tipo de error.",
           explicacionCorrecta: "Tu validador habla con sus propias palabras: una excepción con nombre claro y una función que decide cuándo lanzarla. Es un patrón que reutilizarás mil veces.",
           explicacionIncorrecta: "Comprueba que el except captura ContrasenaDebil y no un tipo genérico, y que el raise está dentro del if. Si no hay else, el caso válido nunca se muestra.",
           solucionComentada: "# Excepción propia para contraseñas demasiado cortas\nclass ContrasenaDebil(Exception):\n    pass\n\ndef validar(contrasena):\n    # Si tiene menos de 8 caracteres, lanzamos nuestro error\n    if len(contrasena) < 8:\n        raise ContrasenaDebil('La contraseña es demasiado corta')\n    return True\n\ntry:\n    validar('abc')\nexcept ContrasenaDebil as error:\n    # Informamos del problema concreto\n    print('Error:', error)\nelse:\n    # Solo llegamos aquí si no hubo excepción\n    print('Contraseña aceptada')\n"
@@ -20789,14 +20914,8 @@ const CURSO = {
           concepto: "pyfetch",
           xp: 2,
           dificultad: 3,
-          lineasDesordenadas: [
-            "from pyodide.http import pyfetch",
-            "async def obtener_datos(url):",
-            "    respuesta = await pyfetch(url)",
-            "    datos = await respuesta.json()",
-            "    return datos"
-          ],
-          ordenCorrecto: [0, 1, 2, 3, 4],
+          lineasDesordenadas: ["    datos = await respuesta.json()","async def obtener_datos(url):","    return datos","    respuesta = await pyfetch(url)","from pyodide.http import pyfetch"],
+          ordenCorrecto: [4,1,3,0,2],
           pista: "Primero el import, luego la definición y después las esperas en orden.",
           explicacionCorrecta: "El import va primero, la función se declara con async def y dentro se esperan la descarga y la lectura del JSON.",
           explicacionIncorrecta: "No se puede usar pyfetch antes de importarlo, y la lectura del JSON solo tiene sentido después de descargar la respuesta."
@@ -20833,7 +20952,7 @@ const CURSO = {
             { tipo: "contiene_codigo", valor: "await pyfetch", descripcion: "Debes esperar la petición con await pyfetch" },
             { tipo: "contiene_codigo", valor: "respuesta.json()", descripcion: "Debes leer el JSON de la respuesta" }
           ],
-          pista: "Define async def obtener_datos(url):, dentro haz respuesta = await pyfetch(url) y devuelve await respuesta.json(). No la llames fuera.",
+          pista: "El await hace falta DOS veces: una para pedir y otra para leer el contenido de la respuesta. Y la funcion tiene que estar declarada como asincrona, porque dentro de ella se espera.",
           explicacionCorrecta: "Escribiste correctamente el esqueleto asíncrono: async def, dos await y la lectura del JSON. Es la estructura que usarás con cualquier API.",
           explicacionIncorrecta: "Si olvidas async o alguno de los await, la función no funcionaría con una API real. Revisa también que devuelves el resultado de respuesta.json().",
           solucionComentada: "from pyodide.http import pyfetch\n\n# Declaramos la función como asíncrona con async def\nasync def obtener_datos(url):\n    # Esperamos la descarga de la respuesta\n    respuesta = await pyfetch(url)\n    # Esperamos la lectura del cuerpo como JSON y lo devolvemos\n    return await respuesta.json()\n\n# No llamamos a la función en este ejercicio\n"
@@ -20975,7 +21094,7 @@ const CURSO = {
             { tipo: "contiene_codigo", valor: "productos", descripcion: "Debes entrar en la clave productos" },
             { tipo: "salida_contiene", valor: "pan", descripcion: "La salida debe mostrar los nombres de los productos" }
           ],
-          pista: "Escribe for producto in datos['productos']: y dentro print(producto['nombre']).",
+          pista: "datos es un diccionario y la lista esta dentro de una de sus claves: primero extrae la lista y despues recorrela. De cada elemento te interesa un solo campo.",
           explicacionCorrecta: "Entraste en la lista de productos y leíste un campo de cada elemento. Este es el patrón para procesar listas de resultados de una API.",
           explicacionIncorrecta: "Si recorres datos a secas obtendrás las claves del diccionario, no los productos. Hay que recorrer datos['productos'] y acceder a ['nombre'] en cada vuelta.",
           solucionComentada: "import json\n\n# Respuesta simulada con una lista de productos dentro\nrespuesta = '{\"tienda\": \"Central\", \"productos\": [{\"nombre\": \"pan\", \"precio\": 2}, {\"nombre\": \"leche\", \"precio\": 3}]}'\ndatos = json.loads(respuesta)\n\n# Recorremos la lista interna y mostramos el nombre de cada producto\nfor producto in datos['productos']:\n    print(producto['nombre'])\n"
@@ -21139,7 +21258,7 @@ const CURSO = {
             { tipo: "salida_contiene", valor: "enero", descripcion: "La salida debe incluir enero" },
             { tipo: "no_contiene_codigo", valor: "marzo", descripcion: "Marzo no debe aparecer porque su monto es menor" }
           ],
-          pista: "Recorre ventas con for y añade if venta['monto'] > 80: antes del print.",
+          pista: "Es el patron de FILTRAR dentro del bucle: recorre y, antes de imprimir, comprueba la condicion. Lo que no la cumpla se salta sin imprimir nada.",
           explicacionCorrecta: "Filtraste los datos con un if dentro del bucle y dejaste fuera marzo. Este patrón es el que usan los informes para seleccionar lo relevante.",
           explicacionIncorrecta: "Si imprimes todos los meses sin filtrar aparecerá marzo, que no cumple la condición. Revisa que el if compara venta['monto'] con 80.",
           solucionComentada: "import json\n\nrespuesta = '[{\"mes\": \"enero\", \"monto\": 100}, {\"mes\": \"febrero\", \"monto\": 150}, {\"mes\": \"marzo\", \"monto\": 50}]'\nventas = json.loads(respuesta)\n\n# Mostramos solo los meses que superan el monto mínimo\nfor venta in ventas:\n    if venta['monto'] > 80:\n        print(venta['mes'])\n"
@@ -21272,7 +21391,7 @@ const CURSO = {
             { tipo: "contiene_codigo", valor: ".2f", descripcion: "Debes formatear el monto con dos decimales" },
             { tipo: "salida_contiene", valor: "enero: 100.00", descripcion: "La salida debe respetar el formato pedido" }
           ],
-          pista: "Dentro del bucle usa print(f'{venta[\"mes\"]}: {venta[\"monto\"]:.2f}').",
+          pista: "Aqui se juntan tres cosas: recorrer una lista de diccionarios, sacar un campo de cada uno, y darle formato al numero con DOS DECIMALES dentro de una f-string.",
           explicacionCorrecta: "Formateaste cada cifra con dos decimales dentro de una f-string, consiguiendo un informe legible y uniforme.",
           explicacionIncorrecta: "Si no aplicas .2f verás 100 en lugar de 100.00. Revisa también que la f-string empiece con f y que las claves vayan entre comillas.",
           solucionComentada: "ventas = [{'mes': 'enero', 'monto': 100}, {'mes': 'febrero', 'monto': 150}]\n\n# Recorremos las ventas y formateamos cada monto a dos decimales\nfor venta in ventas:\n    print(f'{venta[\"mes\"]}: {venta[\"monto\"]:.2f}')\n"
@@ -21408,14 +21527,8 @@ const CURSO = {
           concepto: "plt_plot",
           xp: 2,
           dificultad: 3,
-          lineasDesordenadas: [
-            "import matplotlib.pyplot as plt",
-            "x = [1, 2, 3]",
-            "y = [3, 6, 9]",
-            "plt.plot(x, y)",
-            "plt.show()"
-          ],
-          ordenCorrecto: [0, 1, 2, 3, 4],
+          lineasDesordenadas: ["plt.plot(x, y)","y = [3, 6, 9]","x = [1, 2, 3]","import matplotlib.pyplot as plt","plt.show()"],
+          ordenCorrecto: [3,2,1,0,4],
           pista: "Primero el import, luego los datos y al final dibujar y mostrar.",
           explicacionCorrecta: "El orden es importar la librería, preparar los datos, dibujar con plot y mostrar con show. Es la secuencia de cualquier gráfico.",
           explicacionIncorrecta: "No se puede dibujar antes de tener los datos ni usar plt antes de importarlo. Respeta el orden import, datos, plot, show."
@@ -21457,7 +21570,7 @@ const CURSO = {
             { tipo: "contiene_codigo", valor: "plt.bar", descripcion: "Debes dibujar las barras con plt.bar" },
             { tipo: "contiene_codigo", valor: "plt.show", descripcion: "Debes mostrar el gráfico con plt.show" }
           ],
-          pista: "Usa plt.bar(nombres, notas) y después plt.show().",
+          pista: "Para unas barras hacen falta dos listas del mismo tamano: las etiquetas del eje X y los valores. Pasalas a la funcion de barras y no olvides mostrarlo.",
           explicacionCorrecta: "Elegiste plt.bar para comparar categorías y mostraste el resultado. Las barras hacen visibles las diferencias de un vistazo.",
           explicacionIncorrecta: "Con plt.plot verías una línea en lugar de barras. Para comparar categorías lo adecuado es plt.bar.",
           solucionComentada: "import matplotlib.pyplot as plt\n\n# Una etiqueta por barra y un valor por barra\nnombres = ['Ana', 'Luis', 'Marta']\nnotas = [8, 6, 9]\n\n# Dibujamos una barra por persona\nplt.bar(nombres, notas)\n\n# Mostramos el gráfico\nplt.show()\n"
@@ -21605,7 +21718,7 @@ const CURSO = {
             { tipo: "contiene_codigo", valor: "color=", descripcion: "Debes indicar un color" },
             { tipo: "contiene_codigo", valor: "plt.grid", descripcion: "Debes añadir la cuadrícula con plt.grid" }
           ],
-          pista: "Usa plt.bar(meses, valores, color='#4FD1C5'), luego plt.title('Comparación mensual') y plt.grid(True) antes de plt.show().",
+          pista: "Esto es el grafico de barras del ejercicio anterior con tres retoques: el color se pasa como argumento de la funcion de barras, el titulo tiene su propia orden, y la rejilla tambien.",
           explicacionCorrecta: "Combinaste forma, color, título y cuadrícula. Ahora el gráfico tiene una intención visual clara y no solo datos sueltos.",
           explicacionIncorrecta: "Revisa que el parámetro color va dentro de plt.bar y que la cuadrícula se activa con plt.grid(True). Sin esos detalles el gráfico queda más pobre.",
           solucionComentada: "import matplotlib.pyplot as plt\n\nmeses = ['Enero', 'Febrero']\nvalores = [120, 200]\n\n# Barras con color propio\nplt.bar(meses, valores, color='#4FD1C5')\n\n# Título y cuadrícula para facilitar la lectura\nplt.title('Comparación mensual')\nplt.grid(True)\n\nplt.show()\n"
@@ -21747,7 +21860,7 @@ const CURSO = {
             { tipo: "contiene_codigo", valor: "append", descripcion: "Debes rellenar las listas con append" },
             { tipo: "contiene_codigo", valor: "plt.bar", descripcion: "Debes dibujar las barras con plt.bar" }
           ],
-          pista: "Crea meses = [] y montos = [], recórrelos con for añadiendo con append y termina con plt.bar(meses, montos, color='#14B8A6') y plt.title('Ventas por mes').",
+          pista: "Antes de dibujar hay que PREPARAR LOS DATOS: una lista con las etiquetas y otra con los valores, en el mismo orden. Y despues las barras, el color y el titulo.",
           explicacionCorrecta: "Uniste todo el módulo: JSON, bucle, listas y gráfico. Este es el flujo real de cualquier panel de datos que veas en una web.",
           explicacionIncorrecta: "Si dibujas los diccionarios directamente no funcionará: plt.bar necesita dos listas separadas. Revisa que llenas ambas con append.",
           solucionComentada: "import json\nimport matplotlib.pyplot as plt\n\nrespuesta = '[{\"mes\": \"enero\", \"monto\": 100}, {\"mes\": \"febrero\", \"monto\": 150}, {\"mes\": \"marzo\", \"monto\": 50}]'\ndatos = json.loads(respuesta)\n\n# Preparamos dos listas paralelas: etiquetas y valores\nmeses = []\nmontos = []\nfor fila in datos:\n    meses.append(fila['mes'])\n    montos.append(fila['monto'])\n\n# Dibujamos las barras con título\nplt.bar(meses, montos, color='#14B8A6')\nplt.title('Ventas por mes')\nplt.ylabel('Monto')\nplt.show()\n"
@@ -21869,14 +21982,8 @@ const CURSO = {
           concepto: "metodo_aprender",
           xp: 2,
           dificultad: 3,
-          lineasDesordenadas: [
-            "Leer el mensaje de error completo",
-            "Reducir el problema a un ejemplo pequeño",
-            "Consultar la documentación de la función implicada",
-            "Probar una solución y comprobar el resultado",
-            "Anotar lo aprendido para el futuro"
-          ],
-          ordenCorrecto: [0, 1, 2, 3, 4],
+          lineasDesordenadas: ["Anotar lo aprendido para el futuro","Reducir el problema a un ejemplo pequeño","Probar una solución y comprobar el resultado","Consultar la documentación de la función implicada","Leer el mensaje de error completo"],
+          ordenCorrecto: [4,1,3,2,0],
           pista: "Primero entender qué falla, después simplificar, consultar, probar y anotar.",
           explicacionCorrecta: "Ese método ordenado evita perder tiempo adivinando y convierte cada error en un aprendizaje que conservas.",
           explicacionIncorrecta: "Probar sin leer el error o sin reducir el caso suele llevar a cambios a ciegas. Sigue el orden de comprender, simplificar, consultar, probar y anotar."
@@ -21913,7 +22020,7 @@ const CURSO = {
             { tipo: "contiene_codigo", valor: "return None", descripcion: "Debes devolver None cuando hay error" },
             { tipo: "salida_contiene", valor: "None", descripcion: "La salida debe mostrar None" }
           ],
-          pista: "Dentro del try haz return a / b; en el except ZeroDivisionError haz return None. Llama con print(segura_division(10, 0)).",
+          pista: "Dentro del try va la operacion que puede fallar; en el except, la respuesta para el caso imposible (devolver nada). Fijate en que dividir entre cero NO lanza un ValueError.",
           explicacionCorrecta: "Combinaste una función propia con el manejo de errores, devolviendo un valor seguro en lugar de romper el programa. Es un cierre perfecto del módulo.",
           explicacionIncorrecta: "Si el except no devuelve None, la función daría un resultado inesperado. Revisa que capturas ZeroDivisionError y que ambos caminos tienen return.",
           solucionComentada: "def segura_division(a, b):\n    try:\n        # Intentamos la división\n        return a / b\n    except ZeroDivisionError:\n        # En vez de romper el programa, devolvemos None\n        return None\n\n# Probamos el caso problemático\nprint(segura_division(10, 0))\n"
@@ -22012,14 +22119,8 @@ const CURSO = {
           concepto: "proyecto_pasos",
           xp: 2,
           dificultad: 3,
-          lineasDesordenadas: [
-            "Definir la lista de datos con diccionarios",
-            "Guardar los datos en un archivo JSON",
-            "Leer el archivo dentro de un try/except",
-            "Procesar los datos con un bucle y una función propia",
-            "Dibujar el gráfico y mostrar el informe"
-          ],
-          ordenCorrecto: [0, 1, 2, 3, 4],
+          lineasDesordenadas: ["Dibujar el gráfico y mostrar el informe","Leer el archivo dentro de un try/except","Procesar los datos con un bucle y una función propia","Guardar los datos en un archivo JSON","Definir la lista de datos con diccionarios"],
+          ordenCorrecto: [4,3,1,2,0],
           pista: "Primero los datos, después el archivo, la lectura, el proceso y al final la visualización.",
           explicacionCorrecta: "Respetar este orden hace que cada etapa tenga sentido y que el programa nunca trabaje con datos que aún no existen.",
           explicacionIncorrecta: "No se puede leer un archivo que no se ha escrito ni dibujar sin haber procesado los datos. Ordena las etapas de principio a fin."
@@ -22721,7 +22822,7 @@ const CURSO = {
             { tipo: "contiene_codigo", valor: "def es_mayor_de_edad", descripcion: "Debes definir la función es_mayor_de_edad" },
             { tipo: "contiene_codigo", valor: "assert", descripcion: "Debes comprobar la función con assert" }
           ],
-          pista: "La función solo necesita una línea: return edad >= 18. El caso más importante es el 18 exacto, porque es donde suelen fallar las comparaciones >= y >.",
+          pista: "La funcion se puede escribir en una sola linea: devuelve LA COMPARACION, no un if. Y prueba con el 18 exacto, que es donde fallan los mayor-igual y mayor.",
           explicacionCorrecta: "Excelente: probaste justo el valor del límite, que es donde se esconden casi todos los errores de comparación. Si 18 diera False, sabrías al instante que escribiste > en lugar de >=.",
           explicacionIncorrecta: "Fíjate en el operador: con >= la edad 18 devuelve True, con > devolvería False y el primer assert fallaría. Y recuerda que el mensaje final debe escribirse tal cual, sin cambiar ninguna palabra.",
           solucionComentada: "# 1) La función devuelve True a partir de 18 años\ndef es_mayor_de_edad(edad):\n    return edad >= 18\n\n# 2) Probamos el límite exacto y un caso a cada lado\nassert es_mayor_de_edad(18) is True\nassert es_mayor_de_edad(20) is True\nassert es_mayor_de_edad(15) is False\n\n# 3) Mensaje final\nprint('3 pruebas superadas')\n"
@@ -22900,7 +23001,7 @@ const CURSO = {
             { tipo: "contiene_codigo", valor: "def porcentaje", descripcion: "Debes definir la función porcentaje" },
             { tipo: "contiene_codigo", valor: "assert", descripcion: "Debes probar la función con assert antes de usarla" }
           ],
-          pista: "La función es return hechas / total * 100. Para el formato usa un f-string con :.0f. Y para recorrer tuplas dentro de una lista, el bucle puede separar los tres valores a la vez: for nombre, hechas, total in modulos.",
+          pista: "El porcentaje es una regla de tres. Para el formato, pide CERO DECIMALES en la f-string. Y para recorrer tuplas dentro de una lista puedes DESEMPAQUETAR los tres valores en el propio bucle.",
           explicacionCorrecta: "Excelente trabajo: combinaste listas, tuplas, funciones, bucles, f-strings y pruebas en un solo programa, y encima te llevas una herramienta para seguir tu propio avance. Eso es exactamente programar para resolver algo real.",
           explicacionIncorrecta: "Revisa los tres puntos que suelen fallar: que la función use hechas / total * 100, que los assert se ejecuten antes del bucle, y que cada línea tenga el formato nombre: X% completado con el redondeo :.0f. El último print debe ser exactamente Repaso completado.",
           solucionComentada: "# 1) Nuestros datos: nombre del módulo, lecciones hechas y totales\nmodulos = [\n    ('Módulo 4: Listas y diccionarios', 20, 20),\n    ('Módulo 5: Funciones y objetos', 15, 20),\n    ('Módulo 6: Temas avanzados', 18, 20)\n]\n\n# 2) Una función pequeña y fácil de probar\ndef porcentaje(hechas, total):\n    return hechas / total * 100\n\n# 3) La probamos antes de usarla, incluido el caso límite de 0 hechas\nassert porcentaje(1, 2) == 50\nassert porcentaje(0, 20) == 0\nassert porcentaje(20, 20) == 100\n\n# 4) Recorremos la lista y mostramos el avance de cada módulo\nfor nombre, hechas, total in modulos:\n    print(f'{nombre}: {porcentaje(hechas, total):.0f}% completado')\n\n# 5) Mensaje final del repaso\nprint('Repaso completado')\n"
@@ -24790,43 +24891,69 @@ Vistas.renderRepaso = function () {
   var botonEmpezar = Utils.$('btn-repaso-empezar');
 
   var puntos = Game.puntosDebiles();
-  var vencidas = Game.repasosVencidos();
+  /* La cola del olvido: los conceptos que estás a punto de olvidar, el que
+     peor recuerdas primero. Es la lista que manda ahora. */
+  var cola = Game.colaDeOlvido(8);
 
   if (resumen) {
-    resumen.textContent = puntos.length
-      ? 'Estos son los conceptos donde más has fallado. Practicarlos es la forma más rápida de avanzar.'
-      : 'Todavía no tienes fallos registrados. Cuando hagas más ejercicios, aquí verás tus puntos débiles.';
+    resumen.textContent = cola.length
+      ? 'Estos son los conceptos que estás a punto de olvidar. El porcentaje es lo que ' +
+        'probablemente recordarías hoy: cuanto más bajo, más urge repasarlo.'
+      : (puntos.length
+        ? 'Ahora mismo no tienes nada a punto de olvidarse. Abajo tienes los conceptos ' +
+          'donde más has fallado, por si quieres insistir en ellos.'
+        : 'Todavía no tienes fallos registrados. Cuando hagas más ejercicios, aquí verás ' +
+          'qué conviene repasar y cuándo.');
   }
 
   if (cajaVencidas) {
-    cajaVencidas.hidden = vencidas.length === 0;
-    if (textoVencidas) {
-      textoVencidas.textContent = 'Tienes ' + vencidas.length +
-        ' lección(es) cuyo repaso ya toca según el calendario de repetición espaciada.';
+    cajaVencidas.hidden = cola.length === 0;
+    if (textoVencidas && cola.length) {
+      textoVencidas.textContent = 'Te toca repasar ' + cola.length + ' concepto(s). El más ' +
+        'urgente es «' + cola[0].concepto.replace(/_/g, ' ') + '»: hoy recordarías un ' +
+        Math.round(cola[0].recuperabilidad * 100) + ' %.';
     }
   }
 
   if (debiles) {
     debiles.textContent = '';
-    if (!puntos.length) {
+    /* Primero la cola del olvido; si está vacía, los puntos débiles de siempre */
+    var filas = cola.length ? cola : puntos.slice(0, 8);
+
+    if (!filas.length) {
       debiles.appendChild(Utils.crear('div', 'card texto-suave',
         'Aún no hay datos suficientes. Sigue con las lecciones.'));
     }
-    puntos.slice(0, 8).forEach(function (punto) {
-      var nivel = punto.porcentajeAcierto < 50 ? 'alto'
-        : punto.porcentajeAcierto < 80 ? 'medio' : 'bajo';
-      var fila = Utils.crear('div', 'debil debil--' + nivel);
-      fila.appendChild(Utils.crear('div', 'debil__anillo', punto.porcentajeAcierto + '%'));
+
+    filas.forEach(function (fila) {
+      var porcentaje = cola.length
+        ? Math.round(fila.recuperabilidad * 100)
+        : fila.porcentajeAcierto;
+      var nivel = porcentaje < 50 ? 'alto' : porcentaje < 80 ? 'medio' : 'bajo';
+
+      var caja = Utils.crear('div', 'debil debil--' + nivel);
+      caja.appendChild(Utils.crear('div', 'debil__anillo', porcentaje + '%'));
+
       var textos = Utils.crear('div', 'crecer');
-      textos.appendChild(Utils.crear('div', 'texto-negrita', punto.concepto.replace(/_/g, ' ')));
-      textos.appendChild(Utils.crear('div', 'texto-pequeno texto-suave',
-        punto.errores + ' fallo(s) · ' + punto.aciertos + ' acierto(s) de ' + punto.total));
-      fila.appendChild(textos);
-      debiles.appendChild(fila);
+      textos.appendChild(Utils.crear('div', 'texto-negrita', fila.concepto.replace(/_/g, ' ')));
+
+      if (cola.length) {
+        var dias = Math.max(0, Utils.diasEntre(fila.ultimaVez, Utils.hoyISO()));
+        var vuelve = Math.max(0, Math.round(fila.intervalo - dias));
+        textos.appendChild(Utils.crear('div', 'texto-pequeno texto-suave',
+          'lo viste hace ' + dias + ' día(s) · aguanta ' + fila.intervalo + ' días · ' +
+          'vuelve en ' + vuelve + ' · ' + fila.fallos + ' fallo(s)'));
+      } else {
+        textos.appendChild(Utils.crear('div', 'texto-pequeno texto-suave',
+          fila.errores + ' fallo(s) · ' + fila.aciertos + ' acierto(s) de ' + fila.total));
+      }
+
+      caja.appendChild(textos);
+      debiles.appendChild(caja);
     });
   }
 
-  if (botonEmpezar) botonEmpezar.disabled = puntos.length === 0;
+  if (botonEmpezar) botonEmpezar.disabled = (cola.length === 0 && puntos.length === 0);
 };
 
 /* ---------- PANTALLA 9: AJUSTES ---------- */
@@ -24979,6 +25106,11 @@ var Ejercicios = {
       var hallada = Game.buscarLeccion(leccionId);
       if (!hallada) { FX.toast('error', 'Lección no encontrada'); Router.ir('mapa'); return; }
       sesion = Ejercicios._sesionDeLeccion(tipo, hallada.modulo, hallada.leccion, opciones);
+    } else if (tipo === 'conceptos') {
+      /* Sesión armada con los ejercicios de los conceptos que el alumno está
+         a punto de olvidar, no con una lección entera. */
+      sesion = Ejercicios._sesionDeConceptos(opciones && opciones.conceptos);
+      if (!sesion) return;
     } else if (tipo === 'boss') {
       var modulo = Game.buscarModulo(moduloId);
       if (!modulo || !modulo.bossChallenge) { FX.toast('error', 'Jefe no encontrado'); return; }
@@ -25069,9 +25201,40 @@ var Ejercicios = {
     };
   },
 
+  /* Arma una sesión de repaso a partir de CONCEPTOS concretos en vez de una
+     lección entera. Reutiliza el armazón de una sesión normal para que todo
+     lo demás (corrección, pistas, estrellas, XP) siga funcionando igual. */
+  _sesionDeConceptos: function (conceptos) {
+    var lista = (conceptos && conceptos.length)
+      ? conceptos
+      : Game.colaDeOlvido().map(function (x) { return x.concepto; });
+
+    if (!lista.length) {
+      FX.toast('info', 'Todavía no hay nada que estés a punto de olvidar.');
+      return null;
+    }
+
+    var entradas = Game.ejerciciosDeConceptos(lista);
+    if (!entradas.length) {
+      FX.toast('info', 'No he encontrado ejercicios para esos conceptos.');
+      return null;
+    }
+
+    /* El armazón se copia de la lección del primer ejercicio; después se
+       sustituye la lista de ejercicios por la del repaso. */
+    var ancla = entradas[0];
+    var sesion = Ejercicios._sesionDeLeccion('repaso', ancla.modulo, ancla.leccion, {});
+
+    sesion.titulo = entradas.length + ' ejercicios de repaso';
+    sesion.ejercicios = entradas;
+    sesion.totalPreguntas = entradas.length;
+    sesion.enTeoria = false;
+    sesion.conceptosDelRepaso = lista;
+    return sesion;
+  },
+
   /* Construye la sesión del jefe: 10 preguntas al azar del módulo */
-  _sesionDeJefe: function (modulo) {
-    var jefe = modulo.bossChallenge;
+  _sesionDeJefe: function (modulo) {    var jefe = modulo.bossChallenge;
     var preguntas = Utils.barajar(jefe.preguntas || []).slice(0, 10);
     var lista = preguntas.map(function (pregunta, indice) {
       var tipo = pregunta.tipo || 'multiple';
@@ -25794,15 +25957,16 @@ var Ejercicios = {
     var resumen = Ejercicios.calcularResultado();
     var aprobado = resumen.porcentaje >= (CURSO.config.minAciertosParaAprobar || 70);
 
-    if (sesion.tipo === 'leccion' || sesion.tipo === 'repaso') {
+    if (sesion.tipo === 'leccion' || sesion.tipo === 'repaso' || sesion.tipo === 'conceptos') {
       if (sesion.tipo === 'leccion') {
         /* La lección se marca aprobada solo si llega al mínimo exigido */
         if (aprobado) {
           Game.marcarLeccionCompletada(sesion.leccionId, resumen);
           Game.programarRepaso(sesion.leccionId);
         }
-        Game.registrarDiaDeEstudio();
       }
+      /* Repasar también es estudiar: cuenta para la racha y da premios */
+      if (sesion.tipo === 'leccion' || sesion.tipo === 'conceptos') Game.registrarDiaDeEstudio();
       Game.otorgarXp(aprobado ? resumen.xp : Math.round(resumen.xp / 2), sesion.titulo);
       Game.otorgarMonedas(aprobado ? resumen.monedas : 1);
     }
@@ -26251,7 +26415,21 @@ var App = {
     }
 
     /* --- Repaso --- */
+
+    /* Arranca un repaso armado con la cola del olvido: los conceptos que el
+       alumno está a punto de olvidar, no una lección entera.
+       Devuelve true si ha podido empezar (si no, quien llame decide qué hacer). */
+    function empezarRepasoDeLaCola() {
+      var cola = Game.colaDeOlvido();
+      if (!cola.length) return false;
+      Ejercicios.iniciarSesion('conceptos', null, null, {
+        conceptos: cola.map(function (x) { return x.concepto; })
+      });
+      return true;
+    }
+
     App.al('btn-repaso-empezar', 'click', function () {
+      if (empezarRepasoDeLaCola()) return;
       var vencidas = Game.repasosVencidos();
       var objetivo = vencidas.length ? vencidas[0] : null;
       if (!objetivo) {
@@ -26272,6 +26450,7 @@ var App = {
       if (hallada) Ejercicios.iniciarSesion('leccion', hallada.modulo.id, objetivo);
     });
     App.al('btn-repaso-espaciado', 'click', function () {
+      if (empezarRepasoDeLaCola()) return;
       var vencidas = Game.repasosVencidos();
       if (!vencidas.length) { FX.toast('info', 'No toca repasar nada todavía'); return; }
       var hallada = Game.buscarLeccion(vencidas[0]);
@@ -26471,7 +26650,19 @@ var Tutor = {
   MAX_MENSAJES: 12,          // mensajes guardados por lección
   MAX_LECCIONES: 40,         // conversaciones guardadas en total
   MAX_CODIGO: 1200,          // caracteres de código que se envían
-  MODELO_POR_DEFECTO: 'llama-3.3-70b-versatile',
+  MODELO_POR_DEFECTO: 'openai/gpt-oss-120b',
+
+  /* Modelos que el tutor prefiere, en orden. Groq RETIRA modelos con el
+     tiempo: el que venía antes por defecto (llama-3.3-70b-versatile) ya no
+     existe, así que el alumno se comía un 404 en su primera pregunta sin
+     entender por qué. Con esta lista, si el modelo guardado desaparece, la
+     app se cambia sola al primero de aquí que sí esté (ver listarModelos).
+     Comprobado el 2026-09-15 contra una cuenta real de Groq. */
+  MODELOS_PREFERIDOS: [
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
+    'qwen/qwen3.8-27b'
+  ],
 
   datos: null,
 
@@ -26686,7 +26877,34 @@ var Tutor = {
           esDeRepaso: entrada.origen === 'repaso'
         };
       }
+
+      /* Sesión de repaso por CONCEPTOS: hay que decírselo al tutor. Si no,
+         cree que el alumno está en la lección de la que se copió el armazón
+         y le habla de un tema que no tiene delante. */
+      if (sesion.conceptosDelRepaso && sesion.conceptosDelRepaso.length) {
+        ctx.tipo = 'repaso';
+        ctx.conceptos = sesion.conceptosDelRepaso.slice();
+        ctx.memoria = Game.colaDeOlvido(12).filter(function (x) {
+          return sesion.conceptosDelRepaso.indexOf(x.concepto) !== -1;
+        });
+      }
       return ctx;
+    }
+
+    /* En la pantalla de Repaso (sin sesión abierta): el tutor tiene que saber
+       qué conceptos le toca repasar y por qué. */
+    if (pantalla === 'repaso') {
+      var cola = Game.colaDeOlvido(12);
+      return {
+        tipo: 'repaso',
+        pantalla: pantalla,
+        conceptos: cola.map(function (x) { return x.concepto; }),
+        memoria: cola,
+        titulo: '',
+        modulo: '',
+        teoria: null,
+        ejercicio: null
+      };
     }
 
     /* Fuera de una lección: recordamos la última que tocó */
@@ -26707,6 +26925,11 @@ var Tutor = {
   etiquetaContexto: function () {
     var ctx = Tutor.contextoActivo();
     if (ctx.tipo === 'jefe') return 'Jefe final del ' + (ctx.modulo || 'módulo');
+    if (ctx.tipo === 'repaso') {
+      var cuantos = (ctx.conceptos || []).length;
+      return cuantos ? 'Repaso · ' + cuantos + ' concepto(s) a punto de olvidarse'
+        : 'Repaso';
+    }
     if (ctx.tipo === 'leccion') {
       if (ctx.enTeoria) return 'Leyendo la teoría · ' + ctx.titulo;
       if (ctx.ejercicio) return 'Ejercicio ' + ctx.indice + '/' + ctx.total + ' · ' + ctx.titulo;
@@ -26723,6 +26946,12 @@ var Tutor = {
     'a un principiante absoluto en un curso de 6 meses (1 hora al día).',
     '',
     'CÓMO ENSEÑAS (esto es obligatorio):',
+    '- SABES QUÉ TIENE DELANTE. En el contexto de abajo te llega la pantalla, la lección, el',
+    '  bloque de teoría o el ejercicio exacto (con su enunciado, sus opciones y lo que se le pide).',
+    '  Por eso PROHIBIDO preguntarle "¿en qué ejercicio estás?" o "¿qué lección es?": lo sabes tú.',
+    '  Ve directo a lo suyo y nómbralo tú ("en este while...", "con esta lista...").',
+    '- Si te pide PROFUNDIZAR, no repitas lo que ya está en pantalla: da el por qué de fondo, un',
+    '  ejemplo distinto, el error típico y una pregunta para comprobar que lo ha entendido.',
     '- Respondes SIEMPRE en español, con frases cortas y analogías del día a día.',
     '- NUNCA das la solución completa de un ejercicio de golpe. Das pistas graduadas:',
     '  primero una pista suave que haga pensar, y solo si el alumno insiste, otra más',
@@ -26798,6 +27027,30 @@ var Tutor = {
       lineas.push('El alumno está jugando el JEFE FINAL del módulo "' + ctx.modulo + '".');
       lineas.push('Van ' + ctx.aciertos + ' aciertos y ' + ctx.errores + ' errores, y le quedan ' +
         ctx.vidasRestantes + ' vidas. Responde rápido y sin rodeos.');
+      return lineas.join('\n');
+    }
+
+    if (ctx.tipo === 'repaso') {
+      var conceptos = (ctx.conceptos || []).map(function (c) { return c.replace(/_/g, ' '); });
+      if (!conceptos.length) {
+        lineas.push('El alumno está en la pantalla de Repaso y ahora mismo no tiene nada ' +
+          'pendiente. Si pregunta, ayúdale a decidir qué practicar.');
+        return lineas.join('\n');
+      }
+      lineas.push('El alumno está REPASANDO, no estudiando algo nuevo. Repasa estos ' +
+        conceptos.length + ' conceptos concretos porque están a punto de olvidárselos:');
+      (ctx.memoria || []).forEach(function (m) {
+        lineas.push('  · ' + m.concepto.replace(/_/g, ' ') +
+          ' — recuerda un ' + Math.round(m.recuperabilidad * 100) + ' %, ' +
+          'lo vio hace ' + (m.dias === undefined ? '?' : m.dias) + ' día(s), ' +
+          'aguanta unos ' + m.intervalo + ' días' +
+          (m.fallos ? ' y lleva ' + m.fallos + ' fallo(s)' : ''));
+      });
+      if (!(ctx.memoria || []).length) lineas.push('  (' + conceptos.join(', ') + ')');
+      lineas.push('');
+      lineas.push('Céntrate en ESOS conceptos, no en la lección de la que salen los ejercicios. ' +
+        'Si el alumno falla, aprovecha para explicarle la idea de fondo, que es lo que se le está ' +
+        'olvidando. No le des la solución: pregúntale y guíale.');
       return lineas.join('\n');
     }
 
@@ -27119,7 +27372,24 @@ var TutorIA = {
         return !/whisper|tts|guard|embed|vision-only/i.test(id);
       });
       TutorIA._modelos = conversacion;
-      return { ok: true, modelos: conversacion };
+
+      /* AUTOCORRECCIÓN DEL MODELO.
+         Si el modelo guardado (o el de por defecto) ya no está en la lista
+         que devuelve Groq, se cambia solo al primero de la lista de
+         preferencia que sí exista. Así el alumno no se encuentra con un 404
+         en la primera pregunta y no tiene que arreglarlo él. */
+      var actual = Tutor.obtenerModelo();
+      var corregido = null;
+      if (conversacion.indexOf(actual) === -1) {
+        for (var i = 0; i < Tutor.MODELOS_PREFERIDOS.length && !corregido; i++) {
+          if (conversacion.indexOf(Tutor.MODELOS_PREFERIDOS[i]) !== -1) {
+            corregido = Tutor.MODELOS_PREFERIDOS[i];
+          }
+        }
+        if (corregido) Tutor.establecerModelo(corregido);
+      }
+
+      return { ok: true, modelos: conversacion, corregido: corregido, modeloAnterior: actual };
     } catch (err) {
       return { ok: false, mensaje: 'No se pudo conectar con Groq. Revisa tu conexión.' };
     }
@@ -27130,11 +27400,17 @@ var TutorIA = {
     var listado = await TutorIA.listarModelos();
     if (!listado.ok) return listado;
 
-    /* Si el modelo guardado no está en la lista, usamos el primero razonable */
+    /* listarModelos ya ha corregido el modelo si el guardado no existía.
+       Aquí solo queda un último recurso, y usa la MISMA lista de preferencia
+       en vez de nombres escritos a mano: los que había antes aquí
+       (llama-3.3-70b-versatile y llama-3.1-8b-instant) llevaban tiempo
+       retirados, así que la reserva no servía de nada y acababa eligiendo el
+       primer modelo del alfabeto, que es el más pequeño de todos. */
     if (listado.modelos.indexOf(Tutor.obtenerModelo()) === -1) {
-      var preferidos = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
       var elegido = null;
-      preferidos.forEach(function (p) { if (!elegido && listado.modelos.indexOf(p) !== -1) elegido = p; });
+      Tutor.MODELOS_PREFERIDOS.forEach(function (p) {
+        if (!elegido && listado.modelos.indexOf(p) !== -1) elegido = p;
+      });
       Tutor.establecerModelo(elegido || listado.modelos[0]);
     }
 
@@ -27489,13 +27765,23 @@ var TutorUI = {
   accion: function (nombre) {
     var ctx = Tutor.contextoActivo();
 
+    if (nombre === 'profundizar') {
+      TutorUI.enviarTexto('Quiero PROFUNDIZAR en ' + TutorUI.queEstoyViendo(ctx) + '. ' +
+        'No me des la solución si es un ejercicio. En vez de eso, en este orden: ' +
+        '1) explícame POR QUÉ funciona así por dentro, no solo qué hace; ' +
+        '2) ponme un ejemplo distinto del que ya he visto; ' +
+        '3) dime el error típico que se comete con esto y cómo me daría cuenta de que lo he cometido; ' +
+        '4) hazme UNA pregunta para comprobar si lo he entendido de verdad.');
+      return;
+    }
+
     if (nombre === 'pista') {
       if (ctx.tipo === 'general') {
         TutorUI.enviarTexto('Dame un consejo para no perder el hábito de estudiar Python cada día.');
         return;
       }
-      TutorUI.enviarTexto('Dame una pista para este ejercicio, sin decirme la solución. ' +
-        'Que me haga pensar un poco.');
+      TutorUI.enviarTexto('Dame una pista para ' + TutorUI.queEstoyViendo(ctx) +
+        ', sin decirme la solución. Que me haga pensar un poco.');
       return;
     }
 
@@ -27515,17 +27801,44 @@ var TutorUI = {
     }
 
     if (nombre === 'explicar') {
-      TutorUI.enviarTexto('Explícame esto de otra forma, más sencillo, con una analogía del día a día ' +
-        'y un ejemplo muy cortito.');
+      TutorUI.enviarTexto('Explícame ' + TutorUI.queEstoyViendo(ctx) +
+        ' de otra forma, más sencillo, con una analogía del día a día y un ejemplo muy cortito.' +
+        (ctx.ejercicio ? ' Sin darme la solución.' : ''));
       return;
     }
 
     if (nombre === 'ejercicios') {
-      TutorUI.enviarTexto('Genera 3 ejercicios nuevos para practicar este mismo concepto, ' +
-        'de más fácil a más difícil, y pon la solución de cada uno al final en un bloque de código. ' +
+      TutorUI.enviarTexto('Genera 3 ejercicios nuevos para practicar ' + TutorUI.queEstoyViendo(ctx) +
+        ', de más fácil a más difícil, y pon la solución de cada uno al final en un bloque de código. ' +
         'Ten en cuenta que input() usa el panel de Datos de entrada y que random empieza con semilla 0.');
       return;
     }
+  },
+
+  /* Nombra EXACTAMENTE lo que el alumno tiene delante ahora mismo.
+     Sin esto, el tutor recibe un "explícame esto" y tiene que adivinar a qué
+     se refiere: los chips funcionaban, pero la pregunta no decía qué era
+     "esto". Y en un repaso, el tutor ni siquiera sabía que era un repaso. */
+  queEstoyViendo: function (ctx) {
+    if (!ctx) return 'lo que tengo delante';
+
+    if (ctx.tipo === 'repaso') {
+      var lista = (ctx.conceptos || []).map(function (c) { return c.replace(/_/g, ' '); });
+      if (!lista.length) return 'los conceptos que me toca repasar';
+      return 'estos conceptos que estoy a punto de olvidar: ' + lista.join(', ');
+    }
+    if (ctx.tipo === 'jefe') {
+      return 'esta pregunta del jefe final de ' + (ctx.modulo || 'el módulo');
+    }
+    if (ctx.enTeoria && ctx.teoria) {
+      return 'este bloque de teoría titulado «' + (ctx.teoria.titulo || '') + '»';
+    }
+    if (ctx.ejercicio) {
+      var concepto = String(ctx.ejercicio.concepto || '').replace(/_/g, ' ');
+      return 'este ejercicio (número ' + ctx.indice + ' de ' + ctx.total + ', de tipo ' +
+        ctx.ejercicio.tipo + ')' + (concepto ? ' que practica ' + concepto : '');
+    }
+    return 'lo que acabo de estudiar' + (ctx.titulo ? ': ' + ctx.titulo : '');
   },
 
   /* Mete un bloque de código en el editor de la app (o lo copia) */
@@ -27565,10 +27878,10 @@ var TutorUI = {
     if (!TutorIA.disponible()) {
       aviso.textContent = 'Modo local: busco en la teoría del curso, sin enviar nada a internet.';
     } else if (uso && uso.peticiones !== null && uso.peticiones !== undefined) {
-      aviso.textContent = 'Se envía a Groq solo la lección activa. Te quedan ' +
+      aviso.textContent = 'Se envía a Groq solo lo que tienes delante: la lección, el ejercicio o el repaso. Te quedan ' +
         uso.peticiones + ' peticiones este minuto.';
     } else {
-      aviso.textContent = 'Se envía a Groq solo la lección activa y lo que tú escribas.';
+      aviso.textContent = 'Se envía a Groq solo lo que tienes delante (lección, ejercicio o repaso) y lo que tú escribas.';
     }
   },
 
@@ -27937,7 +28250,7 @@ var TutorApp = {
     var aviso = Utils.$('tutor-privacidad');
     if (aviso) {
       aviso.textContent = tiene
-        ? 'Se envía a Groq solo la lección activa y lo que tú escribas.'
+        ? 'Se envía a Groq solo lo que tienes delante (lección, ejercicio o repaso) y lo que tú escribas.'
         : 'Modo local: busco en la teoría del curso, sin enviar nada a internet.';
     }
 
@@ -28471,6 +28784,42 @@ var Sync = {
     return salida;
   },
 
+  /* Une la memoria de conceptos de dos dispositivos.
+     NO vale quedarse con la de un lado: son objetos con varios campos y hay
+     que decidir campo a campo.
+       - De la última vez que se vio cada concepto, se queda la MÁS RECIENTE:
+         es lo que hace que el cálculo del olvido sea correcto en los dos.
+       - El intervalo y la facilidad, del lado que lo vio más recientemente.
+       - Los aciertos y los fallos, sumando los de los dos (se practicó en
+         ambos, y ese trabajo cuenta). */
+  _unirMemoria: function (a, b) {
+    var salida = {};
+    var A = a || {}, B = b || {};
+    var claves = {};
+    Object.keys(A).forEach(function (c) { claves[c] = true; });
+    Object.keys(B).forEach(function (c) { claves[c] = true; });
+
+    Object.keys(claves).forEach(function (concepto) {
+      var x = A[concepto], y = B[concepto];
+      if (!x) { salida[concepto] = y; return; }
+      if (!y) { salida[concepto] = x; return; }
+
+      var xFecha = x.ultimaVez || '';
+      var yFecha = y.ultimaVez || '';
+      var ganador = xFecha >= yFecha ? x : y;
+      var otro = xFecha >= yFecha ? y : x;
+
+      salida[concepto] = {
+        aciertos: (x.aciertos || 0) + (y.aciertos || 0),
+        fallos: (x.fallos || 0) + (y.fallos || 0),
+        ultimaVez: ganador.ultimaVez || otro.ultimaVez || null,
+        intervalo: ganador.intervalo || otro.intervalo || 1,
+        facilidad: ganador.facilidad || otro.facilidad || 2.3
+      };
+    });
+    return salida;
+  },
+
   /* Une los dos progresos y devuelve el resultado más un resumen legible */
   unirProgresos: function (local, remoto) {
     var L = local || {};
@@ -28503,6 +28852,7 @@ var Sync = {
     /* --- Conceptos (alimentan el Repaso): el mayor de cada uno --- */
     union.progreso.erroresPorConcepto = Sync._unirNumeros(lp.erroresPorConcepto, rp.erroresPorConcepto);
     union.progreso.aciertosPorConcepto = Sync._unirNumeros(lp.aciertosPorConcepto, rp.aciertosPorConcepto);
+    union.progreso.memoriaConceptos = Sync._unirMemoria(lp.memoriaConceptos, rp.memoriaConceptos);
 
     /* --- Historial diario y repasos programados --- */
     union.progreso.historialXp = Sync._unirNumeros(lp.historialXp, rp.historialXp);

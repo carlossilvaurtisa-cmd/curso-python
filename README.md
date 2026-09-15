@@ -1,19 +1,25 @@
-# 🐍 PyQuest — Curso de Python en 6 meses
+# 🐍 PyQuest — Curso de Python en 7 meses
 
 Curso interactivo de Python con estética y mecánicas tipo Duolingo. **Un solo archivo
 `index.html`** que funciona sin servidor y sin instalar nada.
 
 ## Qué contiene
 
-- **6 módulos** (6 meses), **120 lecciones** y **623 ejercicios**
+- **7 módulos** (7 meses), **124 lecciones** y **647 ejercicios**
 - **Python real en el navegador** con [Pyodide](https://pyodide.org) (WASM)
 - **9 tipos de ejercicio**: opción múltiple, opción con código, rellenar huecos, ordenar
   líneas, emparejar, predecir la salida, cazar el bug, escribir código y proyectos
 - **Gamificación**: XP, 15 niveles, corazones que se regeneran por tiempo real, racha con
-  congeladores, 25 insignias y tienda con 8 artículos
-- **6 jefes finales** contrarreloj y **repetición espaciada** (repaso de lo que más fallas)
-- **Tutor con IA** opcional (Groq) que sabe qué lección tienes delante, revisa tu código y
-  te da pistas graduadas. Sin clave, funciona un buscador local sobre la teoría del curso
+  congeladores, 26 insignias y tienda con 8 artículos
+- **7 jefes finales** contrarreloj
+- **Repaso por concepto y no por calendario**: cada ejercicio trae su concepto, y el motor
+  guarda cuánto aguanta cada uno en tu memoria. La pantalla de Repaso te enseña **qué estás
+  a punto de olvidar** (con el porcentaje que recordarías hoy) y arma la sesión con esos
+  conceptos. Si fallas, el concepto vuelve antes
+- **Tutor con IA** opcional (Groq) que **sabe qué tienes delante** —la lección, el bloque de
+  teoría, el ejercicio o el repaso— y por eso no te pregunta dónde estás. Revisa tu código,
+  da pistas graduadas y tiene un botón para **profundizar** en lo que tienes en pantalla.
+  Sin clave, funciona un buscador local sobre la teoría del curso
 - **Cuentas opcionales** con Supabase para sincronizar el progreso entre dispositivos
 
 ## Cómo usarlo
