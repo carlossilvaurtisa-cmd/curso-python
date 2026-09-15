@@ -946,6 +946,8 @@ pre.bloque-codigo .k-fn { color: #82AAFF; }
 .hueco--lleno { border-style: solid; border-color: var(--azul); background: #EAF7FE; color: var(--azul-oscuro); }
 .hueco--correcto { border-color: var(--ok-borde); background: var(--ok-fondo); color: var(--ok-texto); }
 .hueco--incorrecto { border-color: var(--error-borde); background: var(--error-fondo); color: var(--error-texto); }
+/* Mientras arrastras una pieza por encima de un hueco */
+.hueco--encima { border-color: var(--azul); border-style: solid; background: #EAF7FE; transform: scale(1.06); }
 .piezas { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
 .pieza {
   padding: 8px 14px;
@@ -23400,10 +23402,15 @@ var Plantillas = {
     partes.forEach(function (trozo, indice) {
       frase.appendChild(document.createTextNode(trozo));
       if (indice < partes.length - 1) {
-        var hueco = Utils.crear('button', 'hueco', 'arrastra aquí');
+        /* La etiqueta dice lo que de verdad hay que hacer. Antes ponía
+           "arrastra aquí" y no se podía arrastrar nada: solo existía el
+           toque (pieza y luego hueco). Ahora funcionan las dos formas, y el
+           texto nombra la más fácil de descubrir. */
+        var hueco = Utils.crear('button', 'hueco', 'pulsa aquí');
         hueco.setAttribute('type', 'button');
         hueco.setAttribute('data-hueco', String(indice));
-        hueco.setAttribute('aria-label', 'Hueco número ' + (indice + 1));
+        hueco.setAttribute('aria-label', 'Hueco número ' + (indice + 1) +
+          '. Pulsa una pieza y luego aquí, o arrastra la pieza hasta este hueco.');
         frase.appendChild(hueco);
       }
     });
@@ -23416,10 +23423,13 @@ var Plantillas = {
       var boton = Utils.crear('button', 'pieza', pieza);
       boton.setAttribute('type', 'button');
       boton.setAttribute('data-pieza', pieza);
+      /* Arrastrable de verdad: con ratón se puede llevar la pieza al hueco.
+         Con el dedo se sigue usando el toque, que en móvil es lo fiable. */
+      boton.setAttribute('draggable', 'true');
       piezas.appendChild(boton);
     });
     envoltorio.appendChild(Utils.crear('p', 'texto-pequeno texto-suave',
-      'Pulsa una pieza y luego el hueco donde quieras colocarla.'));
+      'Pulsa una pieza y luego el hueco donde quieras colocarla. También puedes arrastrarla.'));
     envoltorio.appendChild(piezas);
 
     return envoltorio;
@@ -23457,6 +23467,12 @@ var Plantillas = {
       contenedor.appendChild(fila);
     });
 
+    /* Decir CÓMO se ordena: el ejercicio tiene flechas y arrastre, pero no lo
+       explicaba en ningún sitio y el alumno se queda mirando las líneas. */
+    contenedor.appendChild(Utils.crear('p', 'texto-pequeno texto-suave',
+      'Mueve las líneas con las flechas ▲ ▼ hasta que el programa tenga sentido. ' +
+      'Con el ratón también puedes arrastrarlas.'));
+
     return contenedor;
   },
 
@@ -23491,6 +23507,8 @@ var Plantillas = {
 
     contenedor.appendChild(columnaIzq);
     contenedor.appendChild(columnaDer);
+    contenedor.appendChild(Utils.crear('p', 'texto-pequeno texto-suave',
+      'Pulsa un elemento de la izquierda y luego su pareja de la derecha.'));
     return contenedor;
   },
 
@@ -24128,6 +24146,55 @@ var Vistas = {
       });
     });
 
+    /* Coloca una pieza en un hueco. Se usa desde el TOQUE y desde el
+       ARRASTRE, para que no haya dos caminos con lógica distinta. */
+    function colocarPieza(pieza, hueco) {
+      if (!pieza || !hueco || Ejercicios.bloqueado) return;
+      var posicion = Number(hueco.getAttribute('data-hueco'));
+
+      /* Si el hueco ya tenía una pieza, la devolvemos a la bandeja */
+      if (Ejercicios.huecosRellenos[posicion]) {
+        Ejercicios.huecosRellenos[posicion].classList.remove('pieza--usada');
+        Ejercicios.huecosRellenos[posicion].classList.remove('chip--verde');
+      }
+
+      Ejercicios.huecosRellenos[posicion] = pieza;
+      pieza.classList.add('pieza--usada');
+      pieza.classList.remove('chip--verde');
+      hueco.textContent = pieza.getAttribute('data-pieza');
+      hueco.classList.add('hueco--lleno');
+      Ejercicios.piezaSeleccionada = null;
+
+      var completo = Ejercicios.huecosRellenos.every(function (p) { return !!p; });
+      Ejercicios.habilitarComprobar(completo);
+    }
+
+    Array.prototype.forEach.call(piezas, function (pieza) {
+      pieza.addEventListener('click', function () {
+        if (Ejercicios.bloqueado) return;
+        Array.prototype.forEach.call(piezas, function (otra) {
+          otra.classList.remove('chip--verde');
+        });
+        pieza.classList.add('chip--verde');
+        Ejercicios.piezaSeleccionada = pieza;
+      });
+
+      /* --- ARRASTRE (ratón; con el dedo se sigue usando el toque) --- */
+      pieza.addEventListener('dragstart', function (evento) {
+        if (Ejercicios.bloqueado) { evento.preventDefault(); return; }
+        Ejercicios.piezaSeleccionada = pieza;
+        pieza.classList.add('chip--verde');
+        if (evento.dataTransfer) {
+          evento.dataTransfer.effectAllowed = 'move';
+          evento.dataTransfer.setData('text/plain', pieza.getAttribute('data-pieza'));
+        }
+      });
+
+      pieza.addEventListener('dragend', function () {
+        pieza.classList.remove('chip--verde');
+      });
+    });
+
     Array.prototype.forEach.call(huecos, function (hueco) {
       hueco.addEventListener('click', function () {
         if (Ejercicios.bloqueado) return;
@@ -24135,21 +24202,26 @@ var Vistas = {
           FX.toast('info', 'Primero pulsa una de las piezas de abajo');
           return;
         }
-        var posicion = Number(hueco.getAttribute('data-hueco'));
-        /* Si el hueco ya tenía una pieza, la devolvemos a la bandeja */
-        if (Ejercicios.huecosRellenos[posicion]) {
-          Ejercicios.huecosRellenos[posicion].classList.remove('pieza--usada');
-          Ejercicios.huecosRellenos[posicion].classList.remove('chip--verde');
-        }
-        Ejercicios.huecosRellenos[posicion] = Ejercicios.piezaSeleccionada;
-        Ejercicios.piezaSeleccionada.classList.add('pieza--usada');
-        Ejercicios.piezaSeleccionada.classList.remove('chip--verde');
-        hueco.textContent = Ejercicios.piezaSeleccionada.getAttribute('data-pieza');
-        hueco.classList.add('hueco--lleno');
-        Ejercicios.piezaSeleccionada = null;
+        colocarPieza(Ejercicios.piezaSeleccionada, hueco);
+      });
 
-        var completo = Ejercicios.huecosRellenos.every(function (p) { return !!p; });
-        Ejercicios.habilitarComprobar(completo);
+      /* --- Zona donde se puede soltar la pieza --- */
+      hueco.addEventListener('dragover', function (evento) {
+        if (Ejercicios.bloqueado) return;
+        /* Sin preventDefault el navegador NO permite soltar aquí */
+        evento.preventDefault();
+        if (evento.dataTransfer) evento.dataTransfer.dropEffect = 'move';
+        hueco.classList.add('hueco--encima');
+      });
+
+      hueco.addEventListener('dragleave', function () {
+        hueco.classList.remove('hueco--encima');
+      });
+
+      hueco.addEventListener('drop', function (evento) {
+        evento.preventDefault();
+        hueco.classList.remove('hueco--encima');
+        colocarPieza(Ejercicios.piezaSeleccionada, hueco);
       });
     });
   },
