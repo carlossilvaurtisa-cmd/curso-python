@@ -27266,6 +27266,8 @@ var TutorIA = {
     TutorIA._control = new AbortController();
     var temporizador = window.setTimeout(function () { TutorIA.detener(); }, TutorIA.TIEMPO_MAX);
     var texto = '';
+    var vigilado = 0;      /* ultima longitud revisada por si hay bucle */
+    var repetido = null;   /* si se corta un bucle, aqui queda el detalle */
 
     try {
       var respuesta = await fetch(TutorIA.URL_CHAT, {
@@ -27278,7 +27280,13 @@ var TutorIA = {
           stream: true,
           temperature: 0.4,
           max_tokens: 900,
-          top_p: 0.9
+          top_p: 0.9,
+          /* Estos dos parámetros frenan las respuestas que se quedan repitiendo
+             la misma frase en bucle. Le pasa a cualquier modelo de vez en
+             cuando, y sin freno el bucle se come los 900 tokens enteros: el
+             alumno acaba viendo un muro de texto repetido. */
+          frequency_penalty: 0.3,
+          presence_penalty: 0.2
         })
       });
 
@@ -27298,7 +27306,10 @@ var TutorIA = {
       var decodificador = new TextDecoder();
       var resto = '';
 
-      while (true) {
+      /* La etiqueta del while permite salir del bucle DE VERDAD cuando se
+         detecta una repetición: un `break` normal solo saldría del for
+         interior y el while seguiría añadiendo texto DESPUÉS del corte. */
+      leer: while (true) {
         var paso = await lector.read();
         if (paso.done) break;
         resto += decodificador.decode(paso.value, { stream: true });
@@ -27316,6 +27327,22 @@ var TutorIA = {
             var trozo = eleccion && eleccion.delta ? eleccion.delta.content : null;
             if (trozo) {
               texto += trozo;
+
+              /* Cada cierto tamaño se mira si se ha quedado en bucle. Si es
+                 así se corta AQUÍ: no se sigue gastando el presupuesto de
+                 tokens en texto repetido ni se le pinta al alumno. */
+              if (texto.length - vigilado > 200) {
+                vigilado = texto.length;
+                var revision = TutorIA._cortarRepeticion(texto);
+                if (revision.cortado) {
+                  texto = revision.texto;
+                  repetido = revision;
+                  TutorIA.detener();
+                  if (alTrozo) alTrozo('', texto);
+                  break leer;
+                }
+              }
+
               if (alTrozo) alTrozo(trozo, texto);
             }
           } catch (errFragmento) {
@@ -27324,9 +27351,12 @@ var TutorIA = {
         }
       }
 
-      return { ok: true, texto: texto };
+      return { ok: true, texto: texto, repetido: repetido };
     } catch (err) {
       if (err && err.name === 'AbortError') {
+        /* Si la cortamos nosotros por bucle, no es que el alumno la haya
+           detenido: eso se informa aparte, con repetido. */
+        if (repetido) return { ok: true, texto: texto, repetido: repetido };
         return { ok: false, errorTipo: 'detenido', texto: texto, mensaje: 'Has detenido la respuesta.' };
       }
       return {
@@ -27337,6 +27367,71 @@ var TutorIA = {
       window.clearTimeout(temporizador);
       TutorIA._control = null;
     }
+  },
+
+  /* Detecta una respuesta que se ha quedado repitiendo la misma frase.
+     Devuelve el texto hasta donde empieza el bucle.
+
+     POR QUÉ EXISTE
+     Un modelo de lenguaje, de vez en cuando, se queda en bucle y repite la
+     misma frase cientos de veces ("un ejemplo de un ejemplo de un ejemplo
+     de..."). Con max_tokens 900 eso son cientos de palabras de basura que
+     tapan cualquier explicación útil. Los parámetros frequency_penalty y
+     presence_penalty lo hacen mucho menos probable, pero no imposible: esto
+     es la red que garantiza que el alumno NUNCA vea el muro de texto.
+
+     CÓMO
+     Se buscan ventanas de 1 a 5 palabras y se cuenta cuántas veces aparece
+     cada una. Si alguna aparece 6 veces o más, ahí está el bucle: se corta
+     justo en su primera aparición y se devuelve lo de antes, que es la parte
+     que sí explicaba algo. */
+  _cortarRepeticion: function (texto) {
+    var t = String(texto || '');
+    if (t.length < 120) return { texto: t, cortado: false };
+
+    var palabras = t.split(/\s+/);
+    if (palabras.length < 24) return { texto: t, cortado: false };
+
+    for (var n = 5; n >= 1; n--) {
+      var cuenta = {};
+      var primera = {};
+      for (var i = 0; i + n <= palabras.length; i++) {
+        var clave = palabras.slice(i, i + n).join(' ').toLowerCase();
+        /* Una sola palabra muy corta ("de", "la") se repite en cualquier
+           texto normal y daría falsos positivos. Se exige longitud. */
+        if (n === 1 ? clave.length < 8 : clave.length < 10) continue;
+        cuenta[clave] = (cuenta[clave] || 0) + 1;
+        if (primera[clave] === undefined) primera[clave] = i;
+      }
+
+      var peor = null;
+      Object.keys(cuenta).forEach(function (k) {
+        if (cuenta[k] >= 6 && (!peor || cuenta[k] > cuenta[peor])) peor = k;
+      });
+
+      if (peor) {
+        /* Se corta en la SEGUNDA aparición de la frase repetida: la primera
+           se conserva (puede formar parte de una explicación legítima) y todo
+           lo que viene después ya es el bucle. */
+        var inicio = primera[peor];
+        var segunda = -1;
+        for (var j = inicio + 1; j + n <= palabras.length; j++) {
+          if (palabras.slice(j, j + n).join(' ').toLowerCase() === peor) {
+            segunda = j;
+            break;
+          }
+        }
+        var fin = segunda === -1 ? inicio + n : segunda;
+        return {
+          texto: palabras.slice(0, fin).join(' ').trim(),
+          cortado: true,
+          repetido: peor,
+          veces: cuenta[peor]
+        };
+      }
+    }
+
+    return { texto: t, cortado: false };
   },
 
   /* Corta la respuesta en curso */
@@ -27734,6 +27829,15 @@ var TutorUI = {
       return;
     }
     TutorUI._actualizarMensaje(burbujaBot, resultado.texto);
+
+    /* Si la respuesta se quedaba repitiendo lo mismo, se cortó al detectarlo.
+       Hay que decirlo, o el alumno se queda pensando que el tutor se ha roto. */
+    if (resultado.repetido) {
+      burbujaBot.appendChild(Utils.crear('div', 'texto-pequeno texto-suave mt-1',
+        '⚠️ Al modelo se le fue la respuesta repitiendo lo mismo y la he cortado. ' +
+        'Vuelve a preguntar lo que necesitas y lo intentamos otra vez.'));
+    }
+
     Tutor.agregarMensaje('bot', resultado.texto);
     TutorUI.actualizarContexto();
   },
